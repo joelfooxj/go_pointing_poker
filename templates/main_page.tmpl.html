@@ -1,0 +1,77 @@
+<!-- First line should be the <!DOCTYPE html> -->
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Testing embed</title>
+		<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+	</head>
+	<body>
+		<div class="container-fluid">
+			<h1> TB Pointing Poker </h1>
+				<div class="row">
+					<h2 id="container" class="col-md-12">
+						<ul id="pointsMap">
+						</ul>
+					</h2>
+				</div>
+				<div class="row" id="pointButtons">
+				</div>
+		</div>
+	</body>
+	<script type="text/javascript">
+		// TODO: Could probably move this out to its own template
+		
+		// Subscribe to and handle SSE events
+		var source = new EventSource("/sse_events");
+		source.onmessage = function(event) {
+			console.log(`Received data: ${event.data}`)
+			var pointsMap = JSON.parse(event.data);
+			var element = document.getElementById("pointsMap")
+			// Remove all children and set the current points map 
+			// TODO: Write a simple diffing algo
+			while (element.firstChild) {
+				element.removeChild(element.firstChild);
+			}
+			for(const key of Object.keys(pointsMap)){ 
+				const listItem = document.createElement("li")
+				listItem.innerHTML = `<strong>${key}</strong>: ${pointsMap[key]}`
+				element.appendChild(listItem)
+			}
+		}
+
+		// Create point buttons
+		const points = [1,2,3,5,8]
+		const pointButtons = document.getElementById("pointButtons")
+		for(const point of points){
+			const button = document.createElement("button")
+			button.innerHTML = point
+			button.onclick = function(){
+				onSetKey(point)
+			}
+			pointButtons.appendChild(button)
+		}
+		
+		currentKey = "{{.}}"
+		async function onSetKey(e){
+			console.log(`Requested to set value of ${currentKey} to ${e}`)
+			const response = await fetch("/setkey", {
+				method: "POST", // *GET, POST, PUT, DELETE, etc.
+				mode: "cors", // no-cors, *cors, same-origin
+				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+				credentials: "same-origin", // include, *same-origin, omit
+				headers: {
+					"Content-Type": "application/json",
+					// 'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				redirect: "follow", // manual, *follow, error
+				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+				body: JSON.stringify(
+					{
+						"key": currentKey,
+						"value": e
+					}
+				), // body data type must match "Content-Type" header
+			})
+		}
+	</script>
+</html>
