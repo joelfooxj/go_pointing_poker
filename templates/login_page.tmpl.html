@@ -11,41 +11,10 @@
 				<div class="row">
 					<form id="loginForm" action="main">
 						<label for="username">Enter your username:</label>
-						<input type="text" id="username" name="key">
+						<input type="text" id="username" name="username">
 						<button id="submitBtn">Submit</button>
 					</form>
 				</div>
 		</div>
 	</body>
-	<script type="text/javascript">
-		// let loginForm = document.getElementById("loginForm")
-		// loginForm.addEventListener("submit", async (e) => {
-		// 	e.preventDefault()
-		// 	const username = document.getElementById("username").value
-
-			// disable submit button
-			// const submitBtn = document.getElementById("submitBtn")
-			// submitBtn.disabled = true
-
-			// const response = await fetch(`/iskeyinmap?key=${username}`, {
-			// 	method: "GET", // *GET, POST, PUT, DELETE, etc.
-			// 	mode: "cors", // no-cors, *cors, same-origin
-			// 	cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-			// 	credentials: "same-origin", // include, *same-origin, omit
-			// 	headers: {
-			// 		"Content-Type": "application/json",
-			// 		// 'Content-Type': 'application/x-www-form-urlencoded',
-			// 	},
-			// 	redirect: "follow", // manual, *follow, error
-			// 	referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-			// })
-
-			// this interface is dirty, should clean it up
-			// const isKeyInMap = (await response.text()) === "true" ? true : false
-			// if(isKeyInMap){
-			// 	submitBtn.disabled = true
-			// } else { 
-			// }
-		// })
-	</script>
 </html>

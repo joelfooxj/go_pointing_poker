@@ -191,7 +191,7 @@ func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("Serving main page")
 
 	// Grab and set the key
-	key := req.URL.Query().Get("key")
+	key := req.URL.Query().Get("username")
 
 	mu.Lock()
 	globalMap[key] = 0
@@ -307,7 +307,7 @@ func main() {
 	http.HandleFunc("/resetallkeys", resetAllKeysHandler)
 	http.HandleFunc("/removekey", removeKeyHandler)
 	http.HandleFunc("/main", serveMainPageHandler)
-	http.HandleFunc("/login", loginPageHandler)
+	http.HandleFunc("/", loginPageHandler)
 	http.Handle("/sse_events", broker)
 
 	http.ListenAndServe(":8090", nil)
