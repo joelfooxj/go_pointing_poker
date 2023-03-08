@@ -24,44 +24,65 @@ var (
 	globalChan = make(chan bool)
 )
 
-func getMapHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+/*
+Notes:
+Does it make sense to encapsulate a client, channel, routine and
+map key into a struct/entity?
 
-	jsonMap, _ := json.Marshal(globalMap)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonMap)
+This way, we can hide the implementation details from the handler
 
+I want there to be a way to isolate the flows of each of client
+so that one client can never be coupled to another
+
+Each client would then only have modify access to their specific key
+in the global map. We can say that their modifications are by definition
+isolated since each client has their own key -> their own memory address.
+
+*/
+
+type Broker struct {
+	// The idomatic way of implementing a set is a map
+	// This stores the set of active clients
+	clients map[chan bool]bool
+
+	// A channel to recieve the channels of
+	// new clients to be stored in the set/map
+	newClients chan chan bool
+
+	// A channel to receive the channels of disconnected clients
+	// to be removed from the set/map
+	dcClients chan chan bool
 }
 
-func isKeyInMapHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+func (b *Broker) Start() {
+	go func() {
+		for {
+			// Block until we receive from one of the
+			// three following channels.
+			select {
+			case s := <-b.newClients:
+				// A new client has connected.
+				// Store the new client
+				b.clients[s] = true
+				log.Println("Added new client")
 
-	key := req.URL.Query().Get("key")
+			case s := <-b.dcClients:
+				// A client has disconnected.
+				// Remove the client from the set/map
+				delete(b.clients, s)
+				close(s)
+				log.Println("Removed client")
 
-	fmt.Println("Checking if", key, "is in map...")
-
-	_, ok := globalMap[key]
-
-	if ok {
-		w.WriteHeader(http.StatusOK)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("true"))
-	} else {
-		w.WriteHeader(http.StatusOK)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("false"))
-	}
-}
-
-type setKeyData struct {
-	Key   string `json:"key"`
-	Value int    `json:"value"`
+			case hasUpdate := <-globalChan:
+				// Iterate through and relay the update signal to
+				// each client channel
+				for s := range b.clients {
+					s <- hasUpdate
+				}
+				log.Printf("Notifying %d clients", len(b.clients))
+			}
+		}
+	}()
 }
 
 func setKeyHandler(w http.ResponseWriter, req *http.Request) {
@@ -122,8 +143,6 @@ func registerKeyAndLoginHandler(w http.ResponseWriter, req *http.Request) {
 	key := data["key"].(string)
 	value := int(data["value"].(float64))
 
-	// Might not have to lock inside mutex since only one routine
-	// should be assigned to a key...
 	globalMap[key] = value
 	globalChan <- true
 
@@ -195,7 +214,9 @@ func loginPageHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func serveSSEHandler(w http.ResponseWriter, req *http.Request) {
+// Opens the connection with client
+// and remains open until client closes connection
+func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Make sure that the writer supports flushing.
 	f, ok := w.(http.Flusher)
 	if !ok {
@@ -203,13 +224,9 @@ func serveSSEHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// // Create a new channel, over which the broker can
-	// // send this client messages.
-	// messageChan := make(chan string)
+	clientChan := make(chan bool)
 
-	// // Add this client to the map of those that should
-	// // receive updates
-	// b.newClients <- messageChan
+	b.newClients <- clientChan
 
 	// Listen to the closing of the http connection via the CloseNotifier
 	notify := w.(http.CloseNotifier).CloseNotify()
@@ -217,7 +234,7 @@ func serveSSEHandler(w http.ResponseWriter, req *http.Request) {
 		<-notify
 		// Remove this client from the map of attached clients
 		// when `EventHandler` exits.
-		// b.defunctClients <- messageChan
+		b.dcClients <- clientChan
 		log.Println("HTTP connection just closed.")
 	}()
 
@@ -226,8 +243,6 @@ func serveSSEHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
-
-	fmt.Println("client subscribed to SSE")
 
 	payload, err := json.Marshal(globalMap)
 	if err != nil {
@@ -240,19 +255,18 @@ func serveSSEHandler(w http.ResponseWriter, req *http.Request) {
 	// Don't close the connection, instead loop endlessly.
 	for {
 		// Notify the routine that globalMap has been updated
-		_, open := <-globalChan
-
-		fmt.Println("Received update from globalChan")
+		_, open := <-clientChan
 
 		if !open {
 			// If our messageChan was closed, this means that the client has
 			// disconnected.
+			fmt.Println("Client disconnected")
 			break
 		}
 
 		fmt.Println("Sending update to client", globalMap)
 
-		// // Marshall the globalMap to a json
+		// Marshall the globalMap to a json
 		payload, err := json.Marshal(globalMap)
 		if err != nil {
 			panic(err)
@@ -280,14 +294,21 @@ func main() {
 	}
 	loginPage = page2
 
-	http.HandleFunc("/getmap", getMapHandler)
-	http.HandleFunc("/iskeyinmap", isKeyInMapHandler)
+	broker := &Broker{
+		make(map[chan bool]bool),
+		make(chan (chan bool)),
+		make(chan (chan bool)),
+	}
+
+	// Broker starts listening and relaying signals
+	broker.Start()
+
 	http.HandleFunc("/setkey", setKeyHandler)
 	http.HandleFunc("/resetallkeys", resetAllKeysHandler)
 	http.HandleFunc("/removekey", removeKeyHandler)
 	http.HandleFunc("/main", serveMainPageHandler)
 	http.HandleFunc("/login", loginPageHandler)
-	http.HandleFunc("/sse_events", serveSSEHandler)
+	http.Handle("/sse_events", broker)
 
 	http.ListenAndServe(":8090", nil)
 }
