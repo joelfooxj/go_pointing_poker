@@ -20,9 +20,11 @@
 	</body>
 	<script type="text/javascript">
 		// TODO: Could probably move this out to its own template
+
+		currentKey = "{{.}}"
 		
 		// Subscribe to and handle SSE events
-		var source = new EventSource("/sse_events");
+		var source = new EventSource(`/sse_events?username=${currentKey}`);
 		source.onmessage = function(event) {
 			console.log(`Received data: ${event.data}`)
 			var pointsMap = JSON.parse(event.data);
@@ -51,7 +53,6 @@
 			pointButtons.appendChild(button)
 		}
 		
-		currentKey = "{{.}}"
 		async function onSetKey(e){
 			console.log(`Requested to set value of ${currentKey} to ${e}`)
 			const response = await fetch("/setkey", {

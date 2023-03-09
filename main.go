@@ -14,6 +14,9 @@ import (
 )
 
 var (
+	// TODO: Should wrap the globalMap in a struct
+	// so we can hook any
+	// changes to the map to hooks
 	globalMap = make(map[string]int)
 	mu        sync.Mutex
 
@@ -38,6 +41,15 @@ Each client would then only have modify access to their specific key
 in the global map. We can say that their modifications are by definition
 isolated since each client has their own key -> their own memory address.
 
+TODO:
+** Implement Admin functionality **
+A special user called TBADMIN that can do the following things:
+- Reset all keys
+- Does not have a key, but receives updates
+
+
+
+
 */
 
 type Broker struct {
@@ -54,6 +66,8 @@ type Broker struct {
 	dcClients chan chan bool
 }
 
+// Broker should not be involved in modifying the global map
+// only to relay the update signal to the clients
 func (b *Broker) Start() {
 	go func() {
 		for {
@@ -64,6 +78,7 @@ func (b *Broker) Start() {
 				// A new client has connected.
 				// Store the new client
 				b.clients[s] = true
+				// globalChan <- true
 				log.Println("Added new client")
 
 			case s := <-b.dcClients:
@@ -71,6 +86,7 @@ func (b *Broker) Start() {
 				// Remove the client from the set/map
 				delete(b.clients, s)
 				close(s)
+				// globalChan <- true
 				log.Println("Removed client")
 
 			case hasUpdate := <-globalChan:
@@ -170,22 +186,22 @@ func resetAllKeysHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-func removeKeyHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "DELETE" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	key := req.URL.Query().Get("key")
+// func removeKeyHandler(w http.ResponseWriter, req *http.Request) {
+// 	if req.Method != "DELETE" {
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		return
+// 	}
+// 	key := req.URL.Query().Get("key")
 
-	mu.Lock()
-	delete(globalMap, key)
-	mu.Unlock()
+// 	mu.Lock()
+// 	delete(globalMap, key)
+// 	mu.Unlock()
 
-	globalChan <- true
+// 	globalChan <- true
 
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-}
+// 	w.WriteHeader(http.StatusOK)
+// 	w.Header().Set("Content-Type", "application/json")
+// }
 
 func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("Serving main page")
@@ -224,8 +240,14 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	clientChan := make(chan bool)
+	key := req.URL.Query().Get("username")
+	fmt.Println("Serving key:", key)
 
+	mu.Lock()
+	globalMap[key] = 0
+	mu.Unlock()
+
+	clientChan := make(chan bool)
 	b.newClients <- clientChan
 
 	// Listen to the closing of the http connection via the CloseNotifier
@@ -234,8 +256,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		<-notify
 		// Remove this client from the map of attached clients
 		// when `EventHandler` exits.
+		delete(globalMap, key)
+		globalChan <- true
+
 		b.dcClients <- clientChan
-		log.Println("HTTP connection just closed.")
+		log.Println(key, "just closed.")
 	}()
 
 	// Set the headers related to event streaming.
@@ -251,6 +276,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Fprintf(w, "data: %s\n\n", payload)
 	f.Flush()
+
+	globalChan <- true
 
 	// Don't close the connection, instead loop endlessly.
 	for {
@@ -276,7 +303,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", payload)
 
 		// Flush the response.  This is only possible if
-		// the repsonse supports streaming.
+		// the response supports streaming.
 		f.Flush()
 	}
 }
@@ -305,7 +332,7 @@ func main() {
 
 	http.HandleFunc("/setkey", setKeyHandler)
 	http.HandleFunc("/resetallkeys", resetAllKeysHandler)
-	http.HandleFunc("/removekey", removeKeyHandler)
+	// http.HandleFunc("/removekey", removeKeyHandler)
 	http.HandleFunc("/main", serveMainPageHandler)
 	http.HandleFunc("/", loginPageHandler)
 	http.Handle("/sse_events", broker)
