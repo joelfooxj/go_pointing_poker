@@ -1,4 +1,20 @@
 // Code modified from https://github.com/kljensen/golang-html5-sse-example
+/*
+Architecture:
+
+The overall design is basically for multiple client to
+update the map of keys, and subscribe to updates to the map.
+
+There are 2 main components:
+1. The mapManager, which provides an interface to modify/access the map
+2. A broker manages the channels for clients
+
+We wrap the map in an interface because we toggle between
+a visible map and a hidden map. We also want to automatically
+push any map updates to the clients.
+
+
+*/
 
 package main
 
@@ -13,44 +29,99 @@ import (
 	"sync"
 )
 
+const TBADMIN = "TBADMIN"
+
 var (
-	// TODO: Should wrap the globalMap in a struct
-	// so we can hook any
-	// changes to the map to hooks
-	globalMap = make(map[string]int)
-	mu        sync.Mutex
 
 	//go:embed templates/*.tmpl.html
-	files      embed.FS
-	mainPage   *template.Template
-	loginPage  *template.Template
-	globalChan = make(chan bool)
+	files     embed.FS
+	mainPage  *template.Template
+	loginPage *template.Template
+
+	mapManager = &MapManager{
+		mu:           sync.Mutex{},
+		pointsMap:    make(map[string]int),
+		hiddenMap:    make(map[string]string),
+		updateChan:   make(chan bool),
+		isMapVisible: true,
+	}
+
+	broker = &Broker{
+		make(map[chan bool]bool),
+		make(chan (chan bool)),
+		make(chan (chan bool)),
+	}
+
+	isTBAdminLoggedIn = false
 )
 
-/*
-Notes:
-Does it make sense to encapsulate a client, channel, routine and
-map key into a struct/entity?
+type MapManager struct {
+	mu           sync.Mutex
+	pointsMap    map[string]int
+	hiddenMap    map[string]string
+	updateChan   chan bool
+	isMapVisible bool
+}
 
-This way, we can hide the implementation details from the handler
+func (m *MapManager) setMapVisibility(isVisible bool) {
+	m.isMapVisible = isVisible
+	m.updateChan <- true
+}
 
-I want there to be a way to isolate the flows of each of client
-so that one client can never be coupled to another
+func (m *MapManager) toggleMapVisibility() {
+	m.isMapVisible = !(m.isMapVisible)
+	m.updateChan <- true
+}
 
-Each client would then only have modify access to their specific key
-in the global map. We can say that their modifications are by definition
-isolated since each client has their own key -> their own memory address.
+func (m *MapManager) getMapPayload() []byte {
+	var payload []byte
+	var err error
+	if m.isMapVisible {
+		payload, err = json.Marshal(mapManager.pointsMap)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		payload, err = json.Marshal(mapManager.hiddenMap)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return payload
+}
 
-TODO:
-** Implement Admin functionality **
-A special user called TBADMIN that can do the following things:
-- Reset all keys
-- Does not have a key, but receives updates
+func (m *MapManager) resetMap() {
+	m.mu.Lock()
+	for key := range m.pointsMap {
+		m.pointsMap[key] = 0
+	}
+	m.mu.Unlock()
+	m.updateChan <- true
+}
 
+func (m *MapManager) deleteKey(key string) {
+	m.mu.Lock()
+	delete(m.pointsMap, key)
+	delete(m.hiddenMap, key)
+	m.mu.Unlock()
+	m.updateChan <- true
+}
 
+func (m *MapManager) addKey(key string) {
+	fmt.Println("Adding key", key)
+	m.mu.Lock()
+	m.pointsMap[key] = 0
+	m.hiddenMap[key] = "?"
+	m.mu.Unlock()
+	m.updateChan <- true
+}
 
-
-*/
+func (m *MapManager) setKey(key string, value int) {
+	m.mu.Lock()
+	m.pointsMap[key] = value
+	m.mu.Unlock()
+	m.updateChan <- true
+}
 
 type Broker struct {
 	// The idomatic way of implementing a set is a map
@@ -74,28 +145,22 @@ func (b *Broker) Start() {
 			// Block until we receive from one of the
 			// three following channels.
 			select {
-			case s := <-b.newClients:
+			case c := <-b.newClients:
 				// A new client has connected.
 				// Store the new client
-				b.clients[s] = true
-				// globalChan <- true
-				log.Println("Added new client")
-
-			case s := <-b.dcClients:
+				b.clients[c] = true
+			case c := <-b.dcClients:
 				// A client has disconnected.
 				// Remove the client from the set/map
-				delete(b.clients, s)
-				close(s)
-				// globalChan <- true
-				log.Println("Removed client")
-
-			case hasUpdate := <-globalChan:
+				delete(b.clients, c)
+				close(c)
+			case hasUpdate := <-mapManager.updateChan:
 				// Iterate through and relay the update signal to
 				// each client channel
-				for s := range b.clients {
-					s <- hasUpdate
-				}
 				log.Printf("Notifying %d clients", len(b.clients))
+				for c := range b.clients {
+					c <- hasUpdate
+				}
 			}
 		}
 	}()
@@ -123,47 +188,10 @@ func setKeyHandler(w http.ResponseWriter, req *http.Request) {
 	key := data["key"].(string)
 	value := int(data["value"].(float64))
 
-	// Might not have to lock inside mutex since only one routine
-	// should be assigned to a key...
-	mu.Lock()
-	globalMap[key] = value
-	mu.Unlock()
-
-	fmt.Println("globalMap has been updated to", globalMap)
-
-	globalChan <- true
+	mapManager.setKey(key, value)
+	fmt.Println("globalMap has been updated to", mapManager.pointsMap)
 
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-}
-
-func registerKeyAndLoginHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	var data map[string]interface{}
-
-	rawBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := json.Unmarshal(rawBytes, &data); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("setkey received:", data)
-
-	key := data["key"].(string)
-	value := int(data["value"].(float64))
-
-	globalMap[key] = value
-	globalChan <- true
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
 }
 
 func resetAllKeysHandler(w http.ResponseWriter, req *http.Request) {
@@ -173,45 +201,32 @@ func resetAllKeysHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	fmt.Println("Resetting all keys")
-
-	mu.Lock()
-	for key := range globalMap {
-		globalMap[key] = 0
-	}
-	mu.Unlock()
-
-	globalChan <- true
+	mapManager.resetMap()
 
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
 }
 
-// func removeKeyHandler(w http.ResponseWriter, req *http.Request) {
-// 	if req.Method != "DELETE" {
-// 		w.WriteHeader(http.StatusMethodNotAllowed)
-// 		return
-// 	}
-// 	key := req.URL.Query().Get("key")
+func toggleKeyVisibilityHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 
-// 	mu.Lock()
-// 	delete(globalMap, key)
-// 	mu.Unlock()
+	fmt.Println("Toggling key visibility")
+	mapManager.toggleMapVisibility()
 
-// 	globalChan <- true
-
-// 	w.WriteHeader(http.StatusOK)
-// 	w.Header().Set("Content-Type", "application/json")
-// }
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("true"))
+}
 
 func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Serving main page")
-
-	// Grab and set the key
 	key := req.URL.Query().Get("username")
+	if (key == TBADMIN && isTBAdminLoggedIn) || key == "" {
+		http.Redirect(w, req, "/", http.StatusForbidden)
+		return
+	}
 
-	mu.Lock()
-	globalMap[key] = 0
-	mu.Unlock()
+	fmt.Println("Serving main page for user:", key)
 
 	if err := mainPage.Execute(w, key); err != nil {
 		log.Print(err.Error())
@@ -221,7 +236,7 @@ func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func loginPageHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Serving login page")
+	fmt.Println("Serving login page for", req.Host)
 
 	if err := loginPage.Execute(w, nil); err != nil {
 		log.Print(err.Error())
@@ -233,6 +248,12 @@ func loginPageHandler(w http.ResponseWriter, req *http.Request) {
 // Opens the connection with client
 // and remains open until client closes connection
 func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// Set the headers related to event streaming.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
 	// Make sure that the writer supports flushing.
 	f, ok := w.(http.Flusher)
 	if !ok {
@@ -240,44 +261,38 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	key := req.URL.Query().Get("username")
-	fmt.Println("Serving key:", key)
-
-	mu.Lock()
-	globalMap[key] = 0
-	mu.Unlock()
-
 	clientChan := make(chan bool)
 	b.newClients <- clientChan
+
+	key := req.URL.Query().Get("username")
+	fmt.Println("Subscribed:", key)
+
+	if key == TBADMIN {
+		isTBAdminLoggedIn = true
+		mapManager.setMapVisibility(false)
+	} else {
+		mapManager.addKey(key)
+	}
+
+	payload := mapManager.getMapPayload()
+	fmt.Println("Sending to", key, "payload", payload)
+	fmt.Fprintf(w, "data: %s\n\n", payload)
+	f.Flush()
 
 	// Listen to the closing of the http connection via the CloseNotifier
 	notify := w.(http.CloseNotifier).CloseNotify()
 	go func() {
 		<-notify
-		// Remove this client from the map of attached clients
-		// when `EventHandler` exits.
-		delete(globalMap, key)
-		globalChan <- true
+		fmt.Println(key, "has disconnected")
 
+		if isTBAdminLoggedIn && key == TBADMIN {
+			isTBAdminLoggedIn = false
+			mapManager.setMapVisibility(true)
+		} else {
+			mapManager.deleteKey(key)
+		}
 		b.dcClients <- clientChan
-		log.Println(key, "just closed.")
 	}()
-
-	// Set the headers related to event streaming.
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	payload, err := json.Marshal(globalMap)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Fprintf(w, "data: %s\n\n", payload)
-	f.Flush()
-
-	globalChan <- true
 
 	// Don't close the connection, instead loop endlessly.
 	for {
@@ -291,13 +306,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 
-		fmt.Println("Sending update to client", globalMap)
-
-		// Marshall the globalMap to a json
-		payload, err := json.Marshal(globalMap)
-		if err != nil {
-			panic(err)
-		}
+		payload := mapManager.getMapPayload()
+		fmt.Println("Sending update to user:", key)
 
 		// Write to the ResponseWriter, `w`.
 		fmt.Fprintf(w, "data: %s\n\n", payload)
@@ -309,30 +319,23 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-	page1, err := template.ParseFS(files, "templates/main_page.tmpl.html")
+	var err error
+	mainPage, err = template.ParseFS(files, "templates/main_page.tmpl.html")
 	if err != nil {
 		panic(err)
 	}
-	mainPage = page1
 
-	page2, err := template.ParseFS(files, "templates/login_page.tmpl.html")
+	loginPage, err = template.ParseFS(files, "templates/login_page.tmpl.html")
 	if err != nil {
 		panic(err)
-	}
-	loginPage = page2
-
-	broker := &Broker{
-		make(map[chan bool]bool),
-		make(chan (chan bool)),
-		make(chan (chan bool)),
 	}
 
 	// Broker starts listening and relaying signals
 	broker.Start()
 
 	http.HandleFunc("/setkey", setKeyHandler)
-	http.HandleFunc("/resetallkeys", resetAllKeysHandler)
-	// http.HandleFunc("/removekey", removeKeyHandler)
+	http.HandleFunc("/togglekeyvisibility", toggleKeyVisibilityHandler)
+	http.HandleFunc("/resetkeys", resetAllKeysHandler)
 	http.HandleFunc("/main", serveMainPageHandler)
 	http.HandleFunc("/", loginPageHandler)
 	http.Handle("/sse_events", broker)

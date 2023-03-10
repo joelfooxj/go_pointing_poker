@@ -14,45 +14,118 @@
 						</ul>
 					</h2>
 				</div>
-				<div class="row" id="pointButtons">
+				<div class="row" id="buttons">
 				</div>
 		</div>
 	</body>
 	<script type="text/javascript">
-		// TODO: Could probably move this out to its own template
+		// Detect window close or navigate away
+		window.onbeforeunload = function() {
+			source.close()
+		}
 
-		currentKey = "{{.}}"
+		const currentKey = "{{.}}"
 		
 		// Subscribe to and handle SSE events
 		var source = new EventSource(`/sse_events?username=${currentKey}`);
 		source.onmessage = function(event) {
 			console.log(`Received data: ${event.data}`)
-			var pointsMap = JSON.parse(event.data);
+			// TODO: Write a simple diffing algo?
+			const pointsMap = JSON.parse(event.data);
 			var element = document.getElementById("pointsMap")
 			// Remove all children and set the current points map 
-			// TODO: Write a simple diffing algo
 			while (element.firstChild) {
 				element.removeChild(element.firstChild);
 			}
-			for(const key of Object.keys(pointsMap)){ 
+			console.log(`Points map: ${JSON.stringify(pointsMap)}`)
+			for(const key of Object.keys(pointsMap).sort()){ 
 				const listItem = document.createElement("li")
 				listItem.innerHTML = `<strong>${key}</strong>: ${pointsMap[key]}`
 				element.appendChild(listItem)
 			}
 		}
 
-		// Create point buttons
-		const points = [1,2,3,5,8]
-		const pointButtons = document.getElementById("pointButtons")
-		for(const point of points){
-			const button = document.createElement("button")
-			button.innerHTML = point
-			button.onclick = function(){
-				onSetKey(point)
-			}
-			pointButtons.appendChild(button)
+		// TODO: Should be able to control functionality
+		// via templating...
+
+		const buttons = document.getElementById("buttons")
+		switch (currentKey) {
+			case "":
+				alert("You must be logged in to view this page")
+				window.location.replace("/");
+				break;
+			case "TBADMIN":
+				// Show the hide and clear buttons
+			  const adminBtnProps = [
+					{
+						name: "Show/Hide",
+						id: "togglePoints",
+						function: toggleShowPoints
+					},
+					{
+						name: "Reset",
+						id: "resetPoints",
+						function: resetPoints
+					}
+				]
+
+				for (const prop of adminBtnProps) { 
+					const button = document.createElement("button")
+					button.id = prop.id
+					button.innerHTML = prop.name
+					button.onclick = prop.function
+					buttons.appendChild(button)
+				}
+
+				break;
+			default:
+				const points = [1,2,3,5,8]
+				for(const point of points){
+					const button = document.createElement("button")
+					button.id = "togglePoints"
+					button.innerHTML = point
+					button.onclick = function(){
+						onSetKey(point)
+					}
+					buttons.appendChild(button)
+				}
+				break;
+		}
+
+		function toggleShowPoints() { 
+			const isPointsShown = togglePointsVisibility()
+			const toggleButton = document.getElementById("togglePoints")
 		}
 		
+		async function resetPoints(){
+			console.log(`Requested to reset all points to 0`)
+			const response = await fetch("/resetkeys", {
+				method: "PUT", // *GET, POST, PUT, DELETE, etc.
+				mode: "cors", // no-cors, *cors, same-origin
+				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+				credentials: "same-origin", // include, *same-origin, omit
+				redirect: "follow", // manual, *follow, error
+				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+			})
+		}
+
+		async function togglePointsVisibility(){
+			console.log(`Requested to toggle points visibility`)
+			const response = await fetch("/togglekeyvisibility", {
+				method: "POST", // *GET, POST, PUT, DELETE, etc.
+				mode: "cors", // no-cors, *cors, same-origin
+				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+				credentials: "same-origin", // include, *same-origin, omit
+				redirect: "follow", // manual, *follow, error
+				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+			})
+
+			const responseText = await response.text()
+			console.log(responseText)
+			const isVisible = responseText === "true"
+			return isVisible
+		}
+
 		async function onSetKey(e){
 			console.log(`Requested to set value of ${currentKey} to ${e}`)
 			const response = await fetch("/setkey", {
