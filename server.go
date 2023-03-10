@@ -31,7 +31,6 @@ import (
 const TBADMIN = "TBADMIN"
 
 var (
-
 	//go:embed templates/*.tmpl.html
 	files     embed.FS
 	mainPage  *template.Template
@@ -114,7 +113,6 @@ func (m *MapManager) deleteKey(key string) {
 }
 
 func (m *MapManager) addKey(key string) {
-	fmt.Println("Adding key", key)
 	m.mu.Lock()
 	m.pointsMap[key] = 0
 	m.hiddenMap[key] = ""
@@ -135,17 +133,15 @@ type Broker struct {
 	// This stores the set of active clients
 	clients map[chan bool]bool
 
-	// A channel to recieve the channels of
-	// new clients to be stored in the set/map
+	// A channel to receive the channels of
+	// new clients to be stored in the active set/map
 	newClients chan chan bool
 
 	// A channel to receive the channels of disconnected clients
-	// to be removed from the set/map
+	// to be removed from the active set/map
 	dcClients chan chan bool
 }
 
-// Broker should not be involved in modifying the global map
-// only to relay the update signal to the clients
 func (b *Broker) Start() {
 	go func() {
 		for {
@@ -190,13 +186,9 @@ func setKeyHandler(w http.ResponseWriter, req *http.Request) {
 		panic(err)
 	}
 
-	fmt.Println("setkey received:", data)
-
 	key := data["key"].(string)
 	value := int(data["value"].(float64))
-
 	mapManager.setKey(key, value)
-	fmt.Println("globalMap has been updated to", mapManager.pointsMap)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -285,7 +277,6 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	payload := mapManager.getMapPayload()
-	fmt.Println("Sending to", key, "payload", payload)
 	fmt.Fprintf(w, "data: %s\n\n", payload)
 	f.Flush()
 
@@ -306,24 +297,17 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	// Don't close the connection, instead loop endlessly.
 	for {
-		// Notify the routine that globalMap has been updated
+		// Notify the client via its routine
+		// that there is an update
 		_, open := <-clientChan
 
 		if !open {
-			// If our messageChan was closed, this means that the client has
-			// disconnected.
-			fmt.Println("Client disconnected")
+			fmt.Println("Channel for", key, "is closed")
 			break
 		}
 
 		payload := mapManager.getMapPayload()
-		fmt.Println("Sending update to user:", key)
-
-		// Write to the ResponseWriter, `w`.
 		fmt.Fprintf(w, "data: %s\n\n", payload)
-
-		// Flush the response.  This is only possible if
-		// the response supports streaming.
 		f.Flush()
 	}
 }
@@ -340,7 +324,7 @@ func main() {
 		panic(err)
 	}
 
-	// Broker starts listening and relaying signals
+	// Broker starts listening and managing channels
 	broker.Start()
 
 	http.HandleFunc("/setkey", setKeyHandler)
