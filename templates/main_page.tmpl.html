@@ -4,19 +4,31 @@
 	<head>
 		<title>Testing embed</title>
 		<link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+		<style>
+			.centered {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				height: 100%;
+			}
+		</style>
 	</head>
 	<body>
-		<div class="container-fluid">
-			<h1> TB Pointing Poker </h1>
-				<div class="row">
-					<h2 id="container" class="col-md-12">
+	<div class="container-fluid">
+		<div class="row">
+			<div class="col-sm-12 centered">
+				<div class="bg-secondary">
+					<h1> TB Pointing Poker </h1>
+					<h2 id="container">
 						<ul id="pointsMap">
 						</ul>
 					</h2>
+					<div id="buttons">
+					</div>
 				</div>
-				<div class="row" id="buttons">
-				</div>
+			</div>
 		</div>
+	</div>
 	</body>
 	<script type="text/javascript">
 		// Detect window close or navigate away
@@ -24,11 +36,21 @@
 			source.close()
 		}
 
+		// TODO: notification on when a point is set
+
 		const currentKey = "{{.}}"
 		
 		// Subscribe to and handle SSE events
 		var source = new EventSource(`/sse_events?username=${currentKey}`);
-		source.onmessage = function(event) {
+		source.onopen = (event) => {
+			console.log(`Connection opened: ${event.data}`)
+		}
+		source.onerror = (event) => {
+			console.log(`Connection error: ${event.data}`)
+			document.getElementById("container").innerHTML = "Connection error"
+			document.getElementById("buttons").remove()
+		}
+		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
 			// TODO: Write a simple diffing algo?
 			const pointsMap = JSON.parse(event.data);
@@ -60,7 +82,7 @@
 					{
 						name: "Show/Hide",
 						id: "togglePoints",
-						function: toggleShowPoints
+						function: togglePointsVisibility
 					},
 					{
 						name: "Reset",
@@ -82,7 +104,6 @@
 				const points = [1,2,3,5,8]
 				for(const point of points){
 					const button = document.createElement("button")
-					button.id = "togglePoints"
 					button.innerHTML = point
 					button.onclick = function(){
 						onSetKey(point)
@@ -91,33 +112,20 @@
 				}
 				break;
 		}
-
-		function toggleShowPoints() { 
-			const isPointsShown = togglePointsVisibility()
-			const toggleButton = document.getElementById("togglePoints")
-		}
 		
 		async function resetPoints(){
 			console.log(`Requested to reset all points to 0`)
-			const response = await fetch("/resetkeys", {
-				method: "PUT", // *GET, POST, PUT, DELETE, etc.
-				mode: "cors", // no-cors, *cors, same-origin
-				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-				credentials: "same-origin", // include, *same-origin, omit
-				redirect: "follow", // manual, *follow, error
-				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+			await fetchWrapper({
+				url: "/resetkeys",
+				method: "PUT"
 			})
 		}
 
 		async function togglePointsVisibility(){
 			console.log(`Requested to toggle points visibility`)
-			const response = await fetch("/togglekeyvisibility", {
-				method: "POST", // *GET, POST, PUT, DELETE, etc.
-				mode: "cors", // no-cors, *cors, same-origin
-				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-				credentials: "same-origin", // include, *same-origin, omit
-				redirect: "follow", // manual, *follow, error
-				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+			const response = await fetchWrapper({
+				url: "/togglekeyvisibility",
+				method: "POST"
 			})
 
 			const responseText = await response.text()
@@ -128,23 +136,31 @@
 
 		async function onSetKey(e){
 			console.log(`Requested to set value of ${currentKey} to ${e}`)
-			const response = await fetch("/setkey", {
-				method: "POST", // *GET, POST, PUT, DELETE, etc.
-				mode: "cors", // no-cors, *cors, same-origin
-				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-				credentials: "same-origin", // include, *same-origin, omit
+			await fetchWrapper({
+				url: "/setkey",
+				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					// 'Content-Type': 'application/x-www-form-urlencoded',
 				},
-				redirect: "follow", // manual, *follow, error
-				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
 				body: JSON.stringify(
 					{
 						"key": currentKey,
 						"value": e
 					}
-				), // body data type must match "Content-Type" header
+				)
+			})
+		}
+
+		async function fetchWrapper({url, method, headers, body}){
+			return await fetch(url, {
+				method, // *GET, POST, PUT, DELETE, etc.
+				mode: "cors", // no-cors, *cors, same-origin
+				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+				credentials: "same-origin", // include, *same-origin, omit
+				headers,
+				redirect: "follow", // manual, *follow, error
+				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+				body, // body data type must match "Content-Type" header
 			})
 		}
 	</script>

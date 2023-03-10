@@ -13,7 +13,6 @@ We wrap the map in an interface because we toggle between
 a visible map and a hidden map. We also want to automatically
 push any map updates to the clients.
 
-
 */
 
 package main
@@ -94,7 +93,9 @@ func (m *MapManager) resetMap() {
 	m.mu.Lock()
 	for key := range m.pointsMap {
 		m.pointsMap[key] = 0
+		m.hiddenMap[key] = ""
 	}
+	m.isMapVisible = false
 	m.mu.Unlock()
 	m.updateChan <- true
 }
@@ -111,7 +112,7 @@ func (m *MapManager) addKey(key string) {
 	fmt.Println("Adding key", key)
 	m.mu.Lock()
 	m.pointsMap[key] = 0
-	m.hiddenMap[key] = "?"
+	m.hiddenMap[key] = ""
 	m.mu.Unlock()
 	m.updateChan <- true
 }
@@ -119,6 +120,7 @@ func (m *MapManager) addKey(key string) {
 func (m *MapManager) setKey(key string, value int) {
 	m.mu.Lock()
 	m.pointsMap[key] = value
+	m.hiddenMap[key] = "?"
 	m.mu.Unlock()
 	m.updateChan <- true
 }
