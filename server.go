@@ -100,6 +100,11 @@ func (m *MapManager) resetMap() {
 	m.updateChan <- true
 }
 
+func (m *MapManager) keyExists(key string) bool {
+	_, ok := m.pointsMap[key]
+	return ok
+}
+
 func (m *MapManager) deleteKey(key string) {
 	m.mu.Lock()
 	delete(m.pointsMap, key)
@@ -223,13 +228,16 @@ func toggleKeyVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 
 func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 	key := req.URL.Query().Get("username")
-	if (key == TBADMIN && isTBAdminLoggedIn) || key == "" {
+
+	forbiddenTBAadmin := key == TBADMIN && isTBAdminLoggedIn
+	emptyKey := key == ""
+
+	if forbiddenTBAadmin || emptyKey || mapManager.keyExists(key) {
 		http.Redirect(w, req, "/", http.StatusForbidden)
 		return
 	}
 
 	fmt.Println("Serving main page for user:", key)
-
 	if err := mainPage.Execute(w, key); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
