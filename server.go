@@ -1,20 +1,4 @@
 // Code modified from https://github.com/kljensen/golang-html5-sse-example
-/*
-Architecture:
-
-The overall design is basically for multiple client to
-update the map of keys, and subscribe to updates to the map.
-
-There are 2 main components:
-1. The mapManager, which provides an interface to modify/access the map
-2. A broker manages the channels for clients
-
-We wrap the map in an interface because we toggle between
-a visible map and a hidden map. We also want to automatically
-push any map updates to the clients.
-
-*/
-
 package main
 
 import (
@@ -29,6 +13,7 @@ import (
 )
 
 const TBADMIN = "TBADMIN"
+const maxUsers = 20
 
 var (
 	//go:embed templates/*.tmpl.html
@@ -188,6 +173,14 @@ func setKeyHandler(w http.ResponseWriter, req *http.Request) {
 
 	key := data["key"].(string)
 	value := int(data["value"].(float64))
+
+	// Don't want unconnected users to
+	// add themselves
+	if !mapManager.keyExists(key) {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
 	mapManager.setKey(key, value)
 
 	w.WriteHeader(http.StatusOK)
@@ -223,8 +216,9 @@ func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 
 	forbiddenTBAadmin := key == TBADMIN && isTBAdminLoggedIn
 	emptyKey := key == ""
+	tooManyUsers := len(mapManager.pointsMap) >= MAX_USERS
 
-	if forbiddenTBAadmin || emptyKey || mapManager.keyExists(key) {
+	if forbiddenTBAadmin || emptyKey || mapManager.keyExists(key) || tooManyUsers {
 		http.Redirect(w, req, "/", http.StatusForbidden)
 		return
 	}
@@ -334,5 +328,5 @@ func main() {
 	http.HandleFunc("/", loginPageHandler)
 	http.Handle("/sse_events", broker)
 
-	http.ListenAndServe(":8090", nil)
+	http.ListenAndServe("localhost:8090", nil)
 }
