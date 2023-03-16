@@ -2,18 +2,20 @@
 package main
 
 import (
+	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net/http"
 	"sync"
 )
 
 const TBADMIN = "TBADMIN"
-const maxUsers = 20
+const MAX_USERS = 20
 
 var (
 	//go:embed templates/*.tmpl.html
@@ -35,7 +37,8 @@ var (
 		make(chan (chan bool)),
 	}
 
-	isTBAdminLoggedIn = false
+	isTBAdminLoggedIn        = false
+	adminHash         string = ""
 )
 
 type MapManager struct {
@@ -192,6 +195,13 @@ func resetAllKeysHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Authenticate
+	verifyHash := req.Header.Get("X-Admin-Hash")
+	if verifyHash != adminHash {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	fmt.Println("Resetting all keys")
 	mapManager.resetMap()
 
@@ -204,11 +214,22 @@ func toggleKeyVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	verifyHash := req.Header.Get("X-Admin-Hash")
+	if verifyHash != adminHash {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	fmt.Println("Toggling key visibility")
 	mapManager.toggleMapVisibility()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("true"))
+}
+
+type LoginDetails struct {
+	Key       string
+	AdminHash string
 }
 
 func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
@@ -223,8 +244,24 @@ func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	fmt.Println("Serving main page for user:", key)
-	if err := mainPage.Execute(w, key); err != nil {
+	var randNum *big.Int
+	var err error
+	var randString string
+	if key == TBADMIN {
+		randNum, err = rand.Int(rand.Reader, big.NewInt(100000000000))
+		if err != nil {
+			panic(err)
+		}
+		randString = randNum.String()
+		adminHash = randString
+	} else {
+		randString = ""
+	}
+
+	loginDetails := LoginDetails{key, randString}
+
+	fmt.Println("Serving main page for user:", loginDetails)
+	if err := mainPage.Execute(w, loginDetails); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
 		return

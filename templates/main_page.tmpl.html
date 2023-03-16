@@ -25,7 +25,9 @@
 			source.close()
 		}
 
-		const currentKey = "{{.}}"
+		const currentKey = "{{ .Key}}"
+		const adminHash = "{{ .AdminHash}}"
+
 		
 		// Subscribe to and handle SSE events
 		var source = new EventSource(`/sse_events?username=${currentKey}`);
@@ -109,7 +111,10 @@
 			console.log(`Requested to reset all points to 0`)
 			await fetchWrapper({
 				url: "/resetkeys",
-				method: "PUT"
+				method: "PUT", 
+				headers: {
+					"X-Admin-Hash": adminHash
+				}
 			})
 		}
 
@@ -117,7 +122,10 @@
 			console.log(`Requested to toggle points visibility`)
 			const response = await fetchWrapper({
 				url: "/togglekeyvisibility",
-				method: "POST"
+				method: "POST", 
+				headers: {
+					"X-Admin-Hash": adminHash
+				}
 			})
 
 			const responseText = await response.text()
