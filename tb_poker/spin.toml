@@ -1,0 +1,15 @@
+spin_version = "1"
+authors = ["Joel Foo <joelfooxj@gmail.com>"]
+description = "A minimal pointing boker app built in Go"
+name = "tb_poker"
+trigger = { type = "http", base = "/" }
+version = "0.1.0"
+
+[[component]]
+id = "tb-poker"
+source = "tb_ppoker.wasm"
+allowed_http_hosts = []
+[component.trigger]
+route = "/..."
+[component.build]
+command = "tinygo build -target=wasi -gc=leaking -no-debug -o tb_ppoker.wasm tb_ppoker.go"
