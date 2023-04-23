@@ -36,9 +36,8 @@
 		}
 		source.onerror = (event) => {
 			console.log(`Connection error: ${event.data}`)
-			document.getElementById("container").innerHTML = "Connection error"
-			document.getElementById("buttons").remove()
 			source.close()
+			window.location.href='/login'
 		}
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
