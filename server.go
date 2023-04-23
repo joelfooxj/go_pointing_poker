@@ -25,7 +25,7 @@ var (
 
 	mapManager = &MapManager{
 		mu:           sync.Mutex{},
-		pointsMap:    make(map[string]int),
+		pointsMap:    make(map[string]string),
 		hiddenMap:    make(map[string]string),
 		updateChan:   make(chan bool),
 		isMapVisible: true,
@@ -43,7 +43,7 @@ var (
 
 type MapManager struct {
 	mu           sync.Mutex
-	pointsMap    map[string]int
+	pointsMap    map[string]string
 	hiddenMap    map[string]string
 	updateChan   chan bool
 	isMapVisible bool
@@ -79,7 +79,7 @@ func (m *MapManager) getMapPayload() []byte {
 func (m *MapManager) resetMap() {
 	m.mu.Lock()
 	for key := range m.pointsMap {
-		m.pointsMap[key] = 0
+		m.pointsMap[key] = "0"
 		m.hiddenMap[key] = ""
 	}
 	m.isMapVisible = false
@@ -102,13 +102,13 @@ func (m *MapManager) deleteKey(key string) {
 
 func (m *MapManager) addKey(key string) {
 	m.mu.Lock()
-	m.pointsMap[key] = 0
+	m.pointsMap[key] = "0"
 	m.hiddenMap[key] = ""
 	m.mu.Unlock()
 	m.updateChan <- true
 }
 
-func (m *MapManager) setKey(key string, value int) {
+func (m *MapManager) setKey(key string, value string) {
 	m.mu.Lock()
 	m.pointsMap[key] = value
 	m.hiddenMap[key] = "?"
@@ -175,7 +175,7 @@ func setKeyHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	key := data["key"].(string)
-	value := int(data["value"].(float64))
+	value := data["value"].(string)
 
 	// Don't want unconnected users to
 	// add themselves
