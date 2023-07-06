@@ -1,167 +1,178 @@
 <!-- First line should be the <!DOCTYPE html> -->
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<title>PP-Main</title>
-		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
-	</head>
-	<body>
-		<div class="h-100 d-flex align-items-center justify-content-center">
-			<div>
-				<h1> TB Pointing Poker </h1>
-				<h2 id="container">
-					<ul id="pointsMap">
-					</ul>
-				</h2>
-				<div id="buttons" class="d-flex justify-content-between">
-				</div>
-			</div>
-		</div>
-	</body>
-	<script type="text/javascript">
-		// Detect window close or navigate away
-		window.onbeforeunload = () => {
-			source.close()
-		}
+  <head>
+    <title>PP-Main</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
+      crossorigin="anonymous"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="h-100 mw-100 d-flex align-items-center justify-content-center">
+      <div style="max-width: 600px">
+        <h1>TB Pointing Poker</h1>
+        <h2 id="container">
+          <ul id="pointsMap"></ul>
+        </h2>
+        <div id="buttons" class="d-flex justify-content-start gap-3"></div>
+      </div>
+    </div>
+  </body>
+  <script type="text/javascript">
+    // Detect window close or navigate away
+    window.onbeforeunload = () => {
+      source.close();
+    };
 
-		const currentKey = "{{ .Key}}"
-		const adminHash = "{{ .AdminHash}}"
+    const currentKey = "{{ .Key}}";
+    const adminHash = "{{ .AdminHash}}";
 
-		
-		// Subscribe to and handle SSE events
-		var source = new EventSource(`/sse_events?username=${currentKey}`);
-		source.onopen = (event) => {
-			console.log(`Connection opened: ${event.data}`)
-		}
-		source.onerror = (event) => {
-			console.log(`Connection error: ${event.data}`)
-			source.close()
-			window.location.href='/login'
-		}
-		source.onmessage = (event) => {
-			console.log(`Received data: ${event.data}`)
-			// TODO: Write a simple diffing algo?
-			const pointsMap = JSON.parse(event.data);
-			var element = document.getElementById("pointsMap")
-			// Remove all children and set the current points map 
-			while (element.firstChild) {
-				element.removeChild(element.firstChild);
-			}
-			console.log(`Points map: ${JSON.stringify(pointsMap)}`)
-			for(const key of Object.keys(pointsMap).sort()){ 
-				const listItem = document.createElement("li")
-				listItem.innerHTML = `<strong>${key}</strong>: ${pointsMap[key]}`
-				element.appendChild(listItem)
-			}
-		}
+    // Subscribe to and handle SSE events
+    var source = new EventSource(`/sse_events?username=${currentKey}`);
+    source.onopen = (event) => {
+      console.log(`Connection opened: ${event.data}`);
+    };
+    source.onerror = (event) => {
+      console.log(`Connection error: ${event.data}`);
+      source.close();
+      window.location.href = "/login";
+    };
+    source.onmessage = (event) => {
+      console.log(`Received data: ${event.data}`);
+      // TODO: Write a simple diffing algo?
+      const pointsMap = JSON.parse(event.data);
+      var element = document.getElementById("pointsMap");
+      // Remove all children and set the current points map
+      while (element.firstChild) {
+        element.removeChild(element.firstChild);
+      }
+      console.log(`Points map: ${JSON.stringify(pointsMap)}`);
+      for (const key of Object.keys(pointsMap).sort()) {
+        const listItem = document.createElement("li");
+        listItem.innerHTML = `<strong class="d-inline-block text-truncate" style="max-width: 400px">${key}</strong>: ${pointsMap[key]}`;
+        element.appendChild(listItem);
+      }
+    };
 
-		// TODO: Should be able to control functionality
-		// via templating...
+    // TODO: Should be able to control functionality
+    // via templating...
 
-		const buttons = document.getElementById("buttons")
-		switch (currentKey) {
-			case "":
-				alert("You must be logged in to view this page")
-				window.location.replace("/");
-				break;
-			case "TBADMIN":
-				// Show the hide and clear buttons
-			  const adminBtnProps = [
-					{
-						name: "Show/Hide",
-						id: "togglePoints",
-						function: togglePointsVisibility
-					},
-					{
-						name: "Reset",
-						id: "resetPoints",
-						function: resetPoints
-					}
-				]
+    const buttons = document.getElementById("buttons");
+    // Show the hide and clear buttons
+    const adminBtnProps = [
+      {
+        name: "Show/Hide",
+        id: "togglePoints",
+        function: togglePointsVisibility,
+      },
+      {
+        name: "Reset",
+        id: "resetPoints",
+        function: resetPoints,
+      },
+    ];
 
-				for (const prop of adminBtnProps) { 
-					const button = document.createElement("button")
-					button.id = prop.id
-					button.innerHTML = prop.name
-					button.onclick = prop.function
-					button.classList.add("btn")
-					button.classList.add("btn-primary")
-					buttons.appendChild(button)
+    switch (currentKey) {
+      case "":
+        alert("You must be logged in to view this page");
+        window.location.replace("/");
+        break;
+      case "TBADMIN":
+        for (const prop of adminBtnProps) {
+          const button = document.createElement("button");
+          button.id = prop.id;
+          button.innerHTML = prop.name;
+          button.onclick = prop.function;
+          button.classList.add("btn");
+          button.classList.add("btn-primary");
+          buttons.appendChild(button);
+        }
 
-				}
+        break;
+      default:
+        const points = ["1", "2", "3", "5", "8", "\u2615"];
+        for (const point of points) {
+          const button = document.createElement("button");
+          button.innerHTML = point;
+          button.onclick = () => {
+            onSetKey(point);
+          };
+          button.classList.add("btn");
+          button.classList.add("btn-primary");
+          buttons.appendChild(button);
+        }
 
-				break;
-			default:
-				const points = ['1','2','3','5','8', '\u2615']
-				for(const point of points){
-					const button = document.createElement("button")
-					button.innerHTML = point
-					button.onclick = () => {
-						onSetKey(point)
-					}
-					button.classList.add("btn")
-					button.classList.add("btn-primary")
-					buttons.appendChild(button)
-				}
-				break;
-		}
-		
-		async function resetPoints(){
-			console.log(`Requested to reset all points to 0`)
-			await fetchWrapper({
-				url: "/resetkeys",
-				method: "PUT", 
-				headers: {
-					"X-Admin-Hash": adminHash
-				}
-			})
-		}
+        const resetBtn = document.createElement("button");
+        resetBtn.id = adminBtnProps[1].id;
+        resetBtn.innerHTML = adminBtnProps[1].name;
+        resetBtn.onclick = adminBtnProps[1].function;
+        resetBtn.classList.add("btn");
+        resetBtn.classList.add("btn-primary");
+        buttons.appendChild(resetBtn);
+        break;
+    }
 
-		async function togglePointsVisibility(){
-			console.log(`Requested to toggle points visibility`)
-			const response = await fetchWrapper({
-				url: "/togglekeyvisibility",
-				method: "POST", 
-				headers: {
-					"X-Admin-Hash": adminHash
-				}
-			})
+    async function resetPoints() {
+      console.log(`Requested to reset all points to 0`);
+      await fetchWrapper({
+        url: "/resetkeys",
+        method: "PUT",
+        headers: {
+          "X-Admin-Hash": adminHash,
+        },
+      });
+    }
 
-			const responseText = await response.text()
-			console.log(responseText)
-			const isVisible = responseText === "true"
-			return isVisible
-		}
+    async function togglePointsVisibility() {
+      console.log(`Requested to toggle points visibility`);
+      const response = await fetchWrapper({
+        url: "/togglekeyvisibility",
+        method: "POST",
+        headers: {
+          "X-Admin-Hash": adminHash,
+        },
+      });
 
-		async function onSetKey(e){
-			console.log(`Requested to set value of ${currentKey} to ${e}`)
-			await fetchWrapper({
-				url: "/setkey",
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(
-					{
-						"key": currentKey,
-						"value": e
-					}
-				)
-			})
-		}
+      const responseText = await response.text();
+      console.log(responseText);
+      const isVisible = responseText === "true";
+      return isVisible;
+    }
 
-		async function fetchWrapper({url, method, headers, body}){
-			return await fetch(url, {
-				method, // *GET, POST, PUT, DELETE, etc.
-				mode: "cors", // no-cors, *cors, same-origin
-				cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-				credentials: "same-origin", // include, *same-origin, omit
-				headers,
-				redirect: "follow", // manual, *follow, error
-				referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-				body, // body data type must match "Content-Type" header
-			})
-		}
-	</script>
+    async function onSetKey(e) {
+      console.log(`Requested to set value of ${currentKey} to ${e}`);
+      await fetchWrapper({
+        url: "/setkey",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: currentKey,
+          value: e,
+        }),
+      });
+    }
+
+    async function fetchWrapper({ url, method, headers, body }) {
+      return await fetch(url, {
+        method, // *GET, POST, PUT, DELETE, etc.
+        mode: "cors", // no-cors, *cors, same-origin
+        cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+        credentials: "same-origin", // include, *same-origin, omit
+        headers,
+        redirect: "follow", // manual, *follow, error
+        referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+        body, // body data type must match "Content-Type" header
+      });
+    }
+  </script>
 </html>
