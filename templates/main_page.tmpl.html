@@ -41,7 +41,6 @@
 		}
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
-			// TODO: Write a simple diffing algo?
 			const pointsMap = JSON.parse(event.data);
 			var element = document.getElementById("pointsMap")
 			// Remove all children and set the current points map 
@@ -56,8 +55,11 @@
 			}
 		}
 
-		// TODO: Should be able to control functionality
-		// via templating...
+		window.onblur = function() { 
+			if(currentKey === "TBADMIN"){
+				setPointsHidden()
+			}
+		}
 
 		const buttons = document.getElementById("buttons")
 		switch (currentKey) {
@@ -88,7 +90,6 @@
 					button.classList.add("btn")
 					button.classList.add("btn-primary")
 					buttons.appendChild(button)
-
 				}
 
 				break;
@@ -112,6 +113,17 @@
 			await fetchWrapper({
 				url: "/resetkeys",
 				method: "PUT", 
+				headers: {
+					"X-Admin-Hash": adminHash
+				}
+			})
+		}
+
+		async function setPointsHidden(){
+			console.log('hiding points')
+			await fetchWrapper({
+				url: "/hidekeys",
+				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}

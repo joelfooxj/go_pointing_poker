@@ -227,6 +227,24 @@ func toggleKeyVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("true"))
 }
 
+func hideKeysHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	verifyHash := req.Header.Get("X-Admin-Hash")
+	if verifyHash != adminHash {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	fmt.Println("Toggling key visibility")
+	mapManager.setMapVisibility(false)
+
+	w.WriteHeader(http.StatusOK)
+}
+
 type LoginDetails struct {
 	Key       string
 	AdminHash string
@@ -360,6 +378,7 @@ func main() {
 
 	http.HandleFunc("/setkey", setKeyHandler)
 	http.HandleFunc("/togglekeyvisibility", toggleKeyVisibilityHandler)
+	http.HandleFunc("/hidekeys", hideKeysHandler)
 	http.HandleFunc("/resetkeys", resetAllKeysHandler)
 	http.HandleFunc("/main", serveMainPageHandler)
 	http.HandleFunc("/", loginPageHandler)
