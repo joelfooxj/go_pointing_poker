@@ -57,7 +57,7 @@
 
 		window.onblur = function() { 
 			if(currentKey === "TBADMIN"){
-				setPointsHidden()
+				resetPoints()
 			}
 		}
 
@@ -113,17 +113,6 @@
 			await fetchWrapper({
 				url: "/resetkeys",
 				method: "PUT", 
-				headers: {
-					"X-Admin-Hash": adminHash
-				}
-			})
-		}
-
-		async function setPointsHidden(){
-			console.log('hiding points')
-			await fetchWrapper({
-				url: "/hidekeys",
-				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}
