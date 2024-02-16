@@ -136,23 +136,23 @@ func (b *Broker) Start() {
 			// Block until we receive from one of the
 			// three following channels.
 			select {
-			case c := <-b.newClients:
-				// A new client has connected.
-				// Store the new client
-				b.clients[c] = true
-			case c := <-b.dcClients:
-				// A client has disconnected.
-				// Remove the client from the set/map
-				delete(b.clients, c)
-				close(c)
-			case hasUpdate := <-mapManager.updateChan:
-				// Iterate through and relay the update signal to
-				// each client channel
-				log.Printf("Notifying %d clients", len(b.clients))
-				for c := range b.clients {
-					c <- hasUpdate
+				case c := <-b.newClients:
+					// A new client has connected.
+					// Store the new client
+					b.clients[c] = true
+				case c := <-b.dcClients:
+					// A client has disconnected.
+					// Remove the client from the set/map
+					delete(b.clients, c)
+					close(c)
+				case hasUpdate := <-mapManager.updateChan:
+					// Iterate through and relay the update signal to
+					// each client channel
+					log.Printf("Notifying %d clients", len(b.clients))
+					for c := range b.clients {
+						c <- hasUpdate
+					}
 				}
-			}
 		}
 	}()
 }
