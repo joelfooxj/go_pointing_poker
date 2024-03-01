@@ -10,7 +10,8 @@
 		<div class="h-100 d-flex align-items-center justify-content-center">
 			<div>
 				<h1> TB Pointing Poker </h1>
-				<form action="main">
+				<!-- TODO: not sure if this works  -->
+				<form action="room/{{ .RoomUUID}}">
 					<div class="form-group">
 						<label for="username">Username</label>
 						<input 

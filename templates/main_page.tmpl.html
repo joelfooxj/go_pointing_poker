@@ -25,20 +25,22 @@
 			source.close()
 		}
 
-		const currentKey = "{{ .Key}}"
+		const roomUUID = "{{ .RoomUUID}}"
+		const currentUser = "{{ .Key}}"
 		const adminHash = "{{ .AdminHash}}"
 
-		
 		// Subscribe to and handle SSE events
-		var source = new EventSource(`/sse_events?username=${currentKey}`);
+		var source = new EventSource(`/sse_events?roomUUID=${roomUUID}&username=${currentUser}`);
 		source.onopen = (event) => {
 			console.log(`Connection opened: ${event.data}`)
 		}
+
 		source.onerror = (event) => {
 			console.log(`Connection error: ${event.data}`)
 			source.close()
 			window.location.href='/login'
 		}
+
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
 			const pointsMap = JSON.parse(event.data);
@@ -56,13 +58,13 @@
 		}
 
 		window.onblur = function() { 
-			if(currentKey === "TBADMIN"){
+			if(currentUser === "TBADMIN"){
 				resetPoints()
 			}
 		}
 
 		const buttons = document.getElementById("buttons")
-		switch (currentKey) {
+		switch (currentUser) {
 			case "":
 				alert("You must be logged in to view this page")
 				window.location.replace("/");
@@ -111,7 +113,7 @@
 		async function resetPoints(){
 			console.log(`Requested to reset all points to 0`)
 			await fetchWrapper({
-				url: "/resetkeys",
+				url: `/resetuserpoints?roomUUID=${roomUUID}`,
 				method: "PUT", 
 				headers: {
 					"X-Admin-Hash": adminHash
@@ -122,7 +124,7 @@
 		async function togglePointsVisibility(){
 			console.log(`Requested to toggle points visibility`)
 			const response = await fetchWrapper({
-				url: "/togglekeyvisibility",
+				url: `/togglepointsvisibility?roomUUID=${roomUUID}`,
 				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
@@ -135,18 +137,18 @@
 			return isVisible
 		}
 
-		async function onSetKey(e){
+		async function onSetKey(value){
 			console.log(`Requested to set value of ${currentKey} to ${e}`)
 			await fetchWrapper({
-				url: "/setkey",
+				url: `/setuserpoints?roomUUID=${roomUUID}`,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify(
 					{
-						"key": currentKey,
-						"value": e
+						username: currentKey,
+						points: value
 					}
 				)
 			})
