@@ -11,6 +11,11 @@
 			<div>
 				<h1> TB Pointing Poker </h1>
 				<b> RoomUUID: {{ .RoomUUID}}</b>
+				<button 
+					onclick="copyRoomUUIDToClipboard()" 
+					class="btn btn-primary">
+						Copy
+				</button>
 				<h2 id="container">
 					<ul id="pointsMap">
 					</ul>
@@ -21,6 +26,11 @@
 		</div>
 	</body>
 	<script type="text/javascript">
+		function copyRoomUUIDToClipboard(){
+			navigator.clipboard.writeText("{{ .RoomUUID}}")
+			console.log("{{ .RoomUUID}} has been copied! ")
+		}
+		
 		// Detect window close or navigate away
 		window.onbeforeunload = () => {
 			source.close()
@@ -139,7 +149,7 @@
 		}
 
 		async function onSetKey(value){
-			console.log(`Requested to set value of ${currentKey} to ${e}`)
+			console.log(`Requested to set value of ${currentUser} to ${value}`)
 			await fetchWrapper({
 				url: `/setuserpoints?roomUUID=${roomUUID}`,
 				method: "POST",
@@ -148,7 +158,7 @@
 				},
 				body: JSON.stringify(
 					{
-						username: currentKey,
+						username: currentUser,
 						points: value
 					}
 				)

@@ -372,6 +372,8 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 // Opens the connection with client
 // and remains open until client closes connection
 func sseEventHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("connecting to ", req.Host)
+
 	// Set the headers related to event streaming.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -464,7 +466,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /{$}", landingPageHandler)
-	mux.HandleFunc("/setuserpoints", setUserPointsHandler)
+	mux.HandleFunc("POST /setuserpoints", setUserPointsHandler)
 
 	mux.HandleFunc("/togglepointsvisibility", togglePointsVisibilityHandler)
 	mux.HandleFunc("/resetuserpoints", resetAllPointsHandler)
