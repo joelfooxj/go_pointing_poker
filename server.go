@@ -336,10 +336,10 @@ func loginPageHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func createRoomHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+	// if req.Method != "POST" {
+	// 	w.WriteHeader(http.StatusMethodNotAllowed)
+	// 	return
+	// }
 
 	var roomUUID string = uuid.NewString()
 	fmt.Println("Creating a room with uuid", roomUUID)
@@ -461,21 +461,21 @@ func main() {
 		panic(err)
 	}
 
-	http.HandleFunc("/setuserpoints", setUserPointsHandler)
-	http.HandleFunc("/togglepointsvisibility", togglePointsVisibilityHandler)
-	http.HandleFunc("/resetuserpoints", resetAllPointsHandler)
+	mux := http.NewServeMux()
 
-	// somehow, we're not even routing here
-	// I think it's interpreting the uuid as a literal
-	http.HandleFunc("/room/:room_uuid", mainPageHandler)
+	mux.HandleFunc("GET /{$}", landingPageHandler)
+	mux.HandleFunc("/setuserpoints", setUserPointsHandler)
 
-	http.HandleFunc("/room", createRoomHandler)
+	mux.HandleFunc("/togglepointsvisibility", togglePointsVisibilityHandler)
+	mux.HandleFunc("/resetuserpoints", resetAllPointsHandler)
 
-	http.HandleFunc("/login", loginPageHandler)
+	mux.HandleFunc("GET /room/{roomUUID}", mainPageHandler)
 
-	http.HandleFunc("/", landingPageHandler)
+	mux.HandleFunc("POST /room/{$}", createRoomHandler)
 
-	http.HandleFunc("/sse_events", sseEventHandler)
+	mux.HandleFunc("GET /login/{$}", loginPageHandler)
 
-	http.ListenAndServe("localhost:8090", nil)
+	mux.HandleFunc("GET /sse_events/{$}", sseEventHandler)
+
+	log.Fatal(http.ListenAndServe(":8090", mux))
 }
