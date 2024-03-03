@@ -10,13 +10,14 @@
 		<div class="h-100 d-flex align-items-center justify-content-center">
 			<div>
 				<h1> TB Pointing Poker </h1>
-				<b> RoomUUID: {{ .RoomUUID}}</b>
 				<button 
+					id="copyBtn"
 					onclick="copyRoomUUIDToClipboard()" 
 					class="btn btn-primary">
-						Copy
+						Copy RoomID
 				</button>
-				<h2 id="container">
+				<small id="copiedText" style="color: green;"></small>
+				<h2 id="pointsContainer">
 					<ul id="pointsMap">
 					</ul>
 				</h2>
@@ -29,6 +30,11 @@
 		function copyRoomUUIDToClipboard(){
 			navigator.clipboard.writeText("{{ .RoomUUID}}")
 			console.log("{{ .RoomUUID}} has been copied! ")
+			const copiedText = document.getElementById("copiedText")
+			copiedText.innerHTML = "Copied!"
+			setTimeout(() => {
+				copiedText.innerHTML = ""
+			}, 1000)
 		}
 		
 		// Detect window close or navigate away
@@ -54,17 +60,22 @@
 
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
-			const pointsMap = JSON.parse(event.data);
-			var element = document.getElementById("pointsMap")
+			const userPoints = JSON.parse(event.data);
+			var pointsMapElement = document.getElementById("pointsMap")
+			pointsMapElement.innerHTML = ""
 			// Remove all children and set the current points map 
-			while (element.firstChild) {
-				element.removeChild(element.firstChild);
+			while (pointsMapElement.firstChild) {
+				pointsMapElement.removeChild(pointsMapElement.firstChild);
 			}
-			console.log(`Points map: ${JSON.stringify(pointsMap)}`)
-			for(const key of Object.keys(pointsMap).sort()){ 
+			console.log(`Points map: ${JSON.stringify(userPoints)}`)
+			if(Object.keys(userPoints).length === 0){
+				pointsMapElement.innerHTML = "There are no users in the room"
+			}
+
+			for(const key of Object.keys(userPoints).sort()){ 
 				const listItem = document.createElement("li")
-				listItem.innerHTML = `<strong>${key}</strong>: ${pointsMap[key]}`
-				element.appendChild(listItem)
+				listItem.innerHTML = `<strong>${key}</strong>: ${userPoints[key]}`
+				pointsMapElement.appendChild(listItem)
 			}
 		}
 

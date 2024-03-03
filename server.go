@@ -325,9 +325,22 @@ type LoginPageDetails struct {
 }
 
 func loginPageHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Serving login page for", req.Host)
-
 	roomUUID := req.URL.Query().Get("roomUUID")
+	fmt.Println("Serving login page for ", roomUUID)
+
+	if roomUUID == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	_, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		errorMsg := fmt.Sprintf("Requested room %s does not exist", roomUUID)
+		log.Print(errorMsg)
+		http.Error(w, errorMsg, 404)
+		return
+	}
+
 	if err := loginPage.Execute(w, LoginPageDetails{roomUUID}); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
@@ -336,11 +349,6 @@ func loginPageHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func createRoomHandler(w http.ResponseWriter, req *http.Request) {
-	// if req.Method != "POST" {
-	// 	w.WriteHeader(http.StatusMethodNotAllowed)
-	// 	return
-	// }
-
 	var roomUUID string = uuid.NewString()
 	fmt.Println("Creating a room with uuid", roomUUID)
 
@@ -419,14 +427,15 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 	go func() {
 		<-notify
 		fmt.Println(username, "has disconnected")
+		roomBroker.dcClients <- clientChan
 
 		if roomManager.isTBAdminLoggedIn && username == TBADMIN {
-			roomManager.isTBAdminLoggedIn = false
-			roomManager.setPointsVisibility(true)
+			// TODO: Inform all room users that the room is destroyed
+			delete(roomMap, roomUUID)
+			return
 		} else {
 			roomManager.deleteUser(username)
 		}
-		roomBroker.dcClients <- clientChan
 	}()
 
 	// Don't close the connection, instead loop endlessly.

@@ -11,34 +11,54 @@
 			<div>
 				<h1> TB Pointing Poker </h1>
 				<br>
-				<!-- Create a new room -->
 				<button onclick="createRoom()" class="btn btn-primary">Create a new room</button>
 				<br>
 				<small> You will be the admin of the newly created room. </small>
 				<br>
 				<br>
-				<!-- the user here should enter the uuid of the room and return 404 if room has not been created yet -->
-				<form action="login">
-					<div class="form-group">
-						<label for="roomUUID">
-							<b>Room UUID</b>
-						</label>
-						<input 
-							type="text"
-							name="roomUUID"
-							class="form-control"
-							id="roomUUID"
-							placeholder="Enter the UUID of the room to join"
-							required="required"
-						>
-					</div>
+				<form id="loginForm">
+					<label for="roomUUID">
+						<b>Room ID</b>
+					</label>
+					<input 
+						type="text"
+						name="roomUUID"
+						class="form-control"
+						id="roomUUID"
+						placeholder="Enter the Room ID"
+						required="required"
+					>
+					<label for="username">
+						<b>Username</b>
+					</label>
+					<input 
+						type="text"
+						name="username"
+						class="form-control"
+						id="username"
+						placeholder="Enter your username"
+						required="required"
+					>
 					<br>
-					<button type="submit" class="btn btn-primary">Submit</button>
+					<button 
+						type="button" 
+						onclick="joinRoom()"
+						class="btn btn-primary"
+					>
+						Join Room
+					</button>
 				</form>
 			</div>
 		</div>
 	</body>
 	<script>
+		function joinRoom(){
+			const loginForm = document.getElementById("loginForm")
+			const roomUUID = loginForm.elements['roomUUID'].value
+			const username = loginForm.elements['username'].value
+			window.location.href = `/room/${roomUUID}?username=${username}`
+		}
+
 		async function createRoom(){
 			console.log('creating room')
 			const response = await fetchWrapper({
