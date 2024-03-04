@@ -5,6 +5,15 @@
 		<title>PP-Main</title>
 		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+		<style>
+			.sectionWrap {
+				border: 1px solid grey;
+				padding: 20px; 
+				margin-top: 20px;
+				margin-bottom: 20px;
+				border-radius: 5px;
+			}
+		</style>
 	</head>
 	<body>
 		<div class="h-100 d-flex align-items-center justify-content-center">
@@ -17,7 +26,8 @@
 						Copy RoomID
 				</button>
 				<small id="copiedText" style="color: green;"></small>
-				<h2 id="pointsContainer">
+				<h2 id="pointsContainer" class="sectionWrap">
+					<div id="pointsStatus"></div>
 					<ul id="pointsMap">
 					</ul>
 				</h2>
@@ -61,17 +71,23 @@
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
 			const userPoints = JSON.parse(event.data);
-			var pointsMapElement = document.getElementById("pointsMap")
-			pointsMapElement.innerHTML = ""
+			const hasUsers = Object.keys(userPoints).length > 0
+			
+			// No users found
+			var pointsStatus = document.getElementById("pointsStatus")
+			if(!hasUsers){
+				pointsStatus.innerHTML = "There are no users in the room."
+				return
+			} else {
+				pointsStatus.innerHTML = ""
+			}
+
 			// Remove all children and set the current points map 
+			var pointsMapElement = document.getElementById("pointsMap")
 			while (pointsMapElement.firstChild) {
 				pointsMapElement.removeChild(pointsMapElement.firstChild);
 			}
-			console.log(`Points map: ${JSON.stringify(userPoints)}`)
-			if(Object.keys(userPoints).length === 0){
-				pointsMapElement.innerHTML = "There are no users in the room."
-			}
-
+			
 			for(const key of Object.keys(userPoints).sort()){ 
 				const listItem = document.createElement("li")
 				listItem.innerHTML = `<strong>${key}</strong>: ${userPoints[key]}`

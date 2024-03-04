@@ -43,9 +43,12 @@ type Broker struct {
 
 	// A channel to receive point updates for the room
 	updateChan chan bool
+
+	// A channel to receive the teardown signal for the room
+	teardownChan chan bool
 }
 
-func (b *Broker) Start() {
+func (b *Broker) Listen() {
 	go func() {
 		for {
 			// Block until we receive from one of the
@@ -57,9 +60,10 @@ func (b *Broker) Start() {
 				b.clients[c] = true
 			case c := <-b.dcClients:
 				// A client has disconnected.
+				// Cloes the channel
 				// Remove the client from the set/map
-				delete(b.clients, c)
 				close(c)
+				delete(b.clients, c)
 			case hasUpdate := <-b.updateChan:
 				// Iterate through and relay the update signal to
 				// each client channel
@@ -67,6 +71,18 @@ func (b *Broker) Start() {
 				for c := range b.clients {
 					c <- hasUpdate
 				}
+			case <-b.teardownChan:
+				log.Printf("Teardown signal received")
+				// Close all client channels and end the routine
+				for c := range b.clients {
+					close(c)
+				}
+				b.clients = nil
+				close(b.newClients)
+				close(b.dcClients)
+				close(b.updateChan)
+				close(b.teardownChan)
+				return
 			}
 		}
 	}()
@@ -80,6 +96,22 @@ type RoomManager struct {
 	isTBAdminLoggedIn bool
 	adminHash         string
 	broker            *Broker
+}
+
+func roomTeardown(roomUUID string) {
+	// Close all channels and end all go routines
+	// nil the room
+
+	log.Print("Tearing down room ", roomUUID)
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		log.Print("Map does not contain room ", roomUUID)
+		return
+	}
+
+	roomManager.broker.teardownChan <- true
+	roomManager.pointsMap = nil
+	roomManager.hiddenMap = nil
 }
 
 func (rm *RoomManager) setPointsVisibility(isVisible bool) {
@@ -270,23 +302,22 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	username := req.URL.Query().Get("username")
 
 	if username == "" {
-		redirectURL := fmt.Sprintf("login?roomUUID=%s", roomUUID)
-		http.Redirect(w, req, redirectURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, req, "/", http.StatusTemporaryRedirect)
 	}
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room:", roomUUID)
-		http.Error(w, "Internal Server Error", 500)
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
+		http.Error(w, errMsg, 404)
 		return
 	}
 
 	forbiddenTBAdmin := username == TBADMIN && roomManager.isTBAdminLoggedIn
-	emptyKey := username == ""
 	tooManyUsers := len(roomManager.pointsMap) >= MAX_USERS
 
-	if forbiddenTBAdmin || emptyKey || roomManager.userExists(username) || tooManyUsers {
-		http.Redirect(w, req, "/", http.StatusForbidden)
+	if forbiddenTBAdmin || roomManager.userExists(username) || tooManyUsers {
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 
@@ -332,6 +363,7 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 		make(chan (chan bool)),
 		make(chan (chan bool)),
 		make(chan bool),
+		make(chan bool),
 	}
 
 	roomManager := &RoomManager{
@@ -344,7 +376,7 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 		broker:            roomBroker,
 	}
 
-	roomManager.broker.Start()
+	roomManager.broker.Listen()
 
 	roomMap[roomUUID] = roomManager
 	w.WriteHeader(http.StatusOK)
@@ -398,19 +430,26 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 	flusher.Flush()
 
 	// Listen to the closing of the http connection via the CloseNotifier
+	// or a teardown signal to end the routine.
 	notify := w.(http.CloseNotifier).CloseNotify()
+	teardownChan := make(chan bool)
 	go func() {
-		<-notify
-		fmt.Println(username, "has disconnected")
-		roomBroker.dcClients <- clientChan
-
-		if roomManager.isTBAdminLoggedIn && username == TBADMIN {
-			// TODO: Design flow to remove all users from destroyed room
-			// If we don't destroy the room, memory leak?
-			delete(roomMap, roomUUID)
+		select {
+		case <-notify:
+			// client has left client-side
+			fmt.Println(username, "has disconnected")
+			if roomManager.isTBAdminLoggedIn && username == TBADMIN {
+				roomTeardown(roomUUID)
+			} else {
+				roomBroker.dcClients <- clientChan
+				roomManager.deleteUser(username)
+			}
 			return
-		} else {
-			roomManager.deleteUser(username)
+		case <-teardownChan:
+			// Teardown has occured
+			// End the routine
+			fmt.Println("Stopping notify routine for", username)
+			return
 		}
 	}()
 
@@ -421,7 +460,8 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		_, open := <-clientChan
 
 		if !open {
-			fmt.Println("Channel for", username, "is closed")
+			fmt.Println("Channel for", username, "is closed.")
+			teardownChan <- true
 			break
 		}
 
