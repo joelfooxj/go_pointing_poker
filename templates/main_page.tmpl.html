@@ -55,7 +55,7 @@
 		source.onerror = (event) => {
 			console.log(`Connection error: ${event.data}`)
 			source.close()
-			window.location.href='/login'
+			window.location.href='/'
 		}
 
 		source.onmessage = (event) => {
@@ -69,7 +69,7 @@
 			}
 			console.log(`Points map: ${JSON.stringify(userPoints)}`)
 			if(Object.keys(userPoints).length === 0){
-				pointsMapElement.innerHTML = "There are no users in the room"
+				pointsMapElement.innerHTML = "There are no users in the room."
 			}
 
 			for(const key of Object.keys(userPoints).sort()){ 
@@ -123,7 +123,7 @@
 					const button = document.createElement("button")
 					button.innerHTML = point
 					button.onclick = () => {
-						onSetKey(point)
+						setPoint(point)
 					}
 					button.classList.add("btn")
 					button.classList.add("btn-primary")
@@ -159,7 +159,7 @@
 			return isVisible
 		}
 
-		async function onSetKey(value){
+		async function setPoint(value){
 			console.log(`Requested to set value of ${currentUser} to ${value}`)
 			await fetchWrapper({
 				url: `/setuserpoints?roomUUID=${roomUUID}`,

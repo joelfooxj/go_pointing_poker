@@ -24,7 +24,6 @@ var (
 	files       embed.FS
 	mainPage    *template.Template
 	landingPage *template.Template
-	loginPage   *template.Template
 
 	roomMap = make(map[string]*RoomManager)
 )
@@ -324,30 +323,6 @@ type LoginPageDetails struct {
 	RoomUUID string
 }
 
-func loginPageHandler(w http.ResponseWriter, req *http.Request) {
-	roomUUID := req.URL.Query().Get("roomUUID")
-	fmt.Println("Serving login page for ", roomUUID)
-
-	if roomUUID == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	_, keyExists := roomMap[roomUUID]
-	if !keyExists {
-		errorMsg := fmt.Sprintf("Requested room %s does not exist", roomUUID)
-		log.Print(errorMsg)
-		http.Error(w, errorMsg, 404)
-		return
-	}
-
-	if err := loginPage.Execute(w, LoginPageDetails{roomUUID}); err != nil {
-		log.Print(err.Error())
-		http.Error(w, "Internal Server Error", 500)
-		return
-	}
-}
-
 func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 	var roomUUID string = uuid.NewString()
 	fmt.Println("Creating a room with uuid", roomUUID)
@@ -430,7 +405,8 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		roomBroker.dcClients <- clientChan
 
 		if roomManager.isTBAdminLoggedIn && username == TBADMIN {
-			// TODO: Inform all room users that the room is destroyed
+			// TODO: Design flow to remove all users from destroyed room
+			// If we don't destroy the room, memory leak?
 			delete(roomMap, roomUUID)
 			return
 		} else {
@@ -467,11 +443,6 @@ func main() {
 		panic(err)
 	}
 
-	loginPage, err = template.ParseFS(files, "templates/login_page.tmpl.html")
-	if err != nil {
-		panic(err)
-	}
-
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /{$}", landingPageHandler)
@@ -483,8 +454,6 @@ func main() {
 	mux.HandleFunc("GET /room/{roomUUID}", mainPageHandler)
 
 	mux.HandleFunc("POST /room/{$}", createRoomHandler)
-
-	mux.HandleFunc("GET /login/{$}", loginPageHandler)
 
 	mux.HandleFunc("GET /sse_events/{$}", sseEventHandler)
 
