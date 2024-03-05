@@ -66,7 +66,7 @@
 			event.preventDefault()
 			const roomUUID = this.elements['roomUUIDInput'].value
 			const username = this.elements['usernameInput'].value
-			window.location.href = `/room/${roomUUID}?username=${username}`
+			window.location.href = `/room/${roomUUID.trim()}?username=${username.trim()}`
 		})
 
 		async function createRoom(){

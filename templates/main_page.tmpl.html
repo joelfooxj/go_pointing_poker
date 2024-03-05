@@ -27,12 +27,16 @@
 				<small class="warningBanner"> Warning: reloading or navigating away from this page will destroy the room. </small>
 				<br>
 				<br>
-				<button 
+				<b> Room ID:</b>
+				<br>
+				<code> {{ .RoomUUID}}</code>
+				<!-- Requires TLS -->
+				<!-- <button 
 					id="copyBtn"
 					onclick="copyRoomUUIDToClipboard()" 
 					class="btn btn-primary">
 						Copy RoomID
-				</button>
+				</button> -->
 				<small id="copiedText" style="color: green;"></small>
 				<h2 id="pointsContainer" class="sectionWrap">
 					<div id="pointsStatus"></div>
@@ -45,6 +49,7 @@
 		</div>
 	</body>
 	<script type="text/javascript">
+		// Note: Most browsers require TLS for copy to clipboard to work.
 		function copyRoomUUIDToClipboard(){
 			navigator.clipboard.writeText("{{ .RoomUUID}}")
 			console.log("{{ .RoomUUID}} has been copied! ")
