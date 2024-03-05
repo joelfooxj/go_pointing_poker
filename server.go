@@ -2,122 +2,33 @@
 package main
 
 import (
-	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"log"
-	"math/big"
 	"net/http"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 const TBADMIN = "TBADMIN"
 const MAX_USERS = 20
 
+// Global vars
 var (
 	//go:embed templates/*.tmpl.html
-	files     embed.FS
-	mainPage  *template.Template
-	loginPage *template.Template
+	files       embed.FS
+	mainPage    *template.Template
+	landingPage *template.Template
+	errorPage   *template.Template
 
-	mapManager = &MapManager{
-		mu:           sync.Mutex{},
-		pointsMap:    make(map[string]string),
-		hiddenMap:    make(map[string]string),
-		updateChan:   make(chan bool),
-		isMapVisible: true,
-	}
-
-	broker = &Broker{
-		make(map[chan bool]bool),
-		make(chan (chan bool)),
-		make(chan (chan bool)),
-	}
-
-	isTBAdminLoggedIn        = false
-	adminHash         string = ""
+	roomMap = make(map[string]*RoomManager)
 )
 
-type MapManager struct {
-	mu           sync.Mutex
-	pointsMap    map[string]string
-	hiddenMap    map[string]string
-	updateChan   chan bool
-	isMapVisible bool
-}
-
-func (m *MapManager) setMapVisibility(isVisible bool) {
-	m.isMapVisible = isVisible
-	m.updateChan <- true
-}
-
-func (m *MapManager) toggleMapVisibility() {
-	m.isMapVisible = !(m.isMapVisible)
-	m.updateChan <- true
-}
-
-func (m *MapManager) getMapPayload() []byte {
-	var payload []byte
-	var err error
-	if m.isMapVisible {
-		payload, err = json.Marshal(mapManager.pointsMap)
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		payload, err = json.Marshal(mapManager.hiddenMap)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return payload
-}
-
-func (m *MapManager) resetMap() {
-	m.mu.Lock()
-	for key := range m.pointsMap {
-		m.pointsMap[key] = "0"
-		m.hiddenMap[key] = ""
-	}
-	m.isMapVisible = false
-	m.mu.Unlock()
-	m.updateChan <- true
-}
-
-func (m *MapManager) keyExists(key string) bool {
-	_, ok := m.pointsMap[key]
-	return ok
-}
-
-func (m *MapManager) deleteKey(key string) {
-	m.mu.Lock()
-	delete(m.pointsMap, key)
-	delete(m.hiddenMap, key)
-	m.mu.Unlock()
-	m.updateChan <- true
-}
-
-func (m *MapManager) addKey(key string) {
-	m.mu.Lock()
-	m.pointsMap[key] = "0"
-	m.hiddenMap[key] = ""
-	m.mu.Unlock()
-	m.updateChan <- true
-}
-
-func (m *MapManager) setKey(key string, value string) {
-	m.mu.Lock()
-	m.pointsMap[key] = value
-	m.hiddenMap[key] = "?"
-	m.mu.Unlock()
-	m.updateChan <- true
-}
-
 type Broker struct {
-	// The idomatic way of implementing a set is a map
+	// The idomatic way of implementing a Set is as keys to a Map
 	// This stores the set of active clients
 	clients map[chan bool]bool
 
@@ -128,9 +39,15 @@ type Broker struct {
 	// A channel to receive the channels of disconnected clients
 	// to be removed from the active set/map
 	dcClients chan chan bool
+
+	// A channel to receive point updates for the room
+	updateChan chan bool
+
+	// A channel to receive the teardown signal for the room
+	teardownChan chan bool
 }
 
-func (b *Broker) Start() {
+func (b *Broker) Listen() {
 	go func() {
 		for {
 			// Block until we receive from one of the
@@ -142,163 +59,302 @@ func (b *Broker) Start() {
 				b.clients[c] = true
 			case c := <-b.dcClients:
 				// A client has disconnected.
+				// Cloes the channel
 				// Remove the client from the set/map
-				delete(b.clients, c)
 				close(c)
-			case hasUpdate := <-mapManager.updateChan:
+				delete(b.clients, c)
+			case hasUpdate := <-b.updateChan:
 				// Iterate through and relay the update signal to
 				// each client channel
-				log.Printf("Notifying %d clients", len(b.clients))
+				// log.Printf("Notifying %d clients", len(b.clients))
 				for c := range b.clients {
 					c <- hasUpdate
 				}
+			case <-b.teardownChan:
+				// log.Printf("Teardown signal received")
+				// Close all client channels and end the routine
+				for c := range b.clients {
+					close(c)
+				}
+				b.clients = nil
+				close(b.newClients)
+				close(b.dcClients)
+				close(b.updateChan)
+				close(b.teardownChan)
+				return
 			}
 		}
 	}()
 }
 
-func setKeyHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+type RoomManager struct {
+	mu                sync.Mutex
+	pointsMap         map[string]string
+	hiddenMap         map[string]string
+	isMapVisible      bool
+	isTBAdminLoggedIn bool
+	adminHash         string
+	broker            *Broker
+}
+
+func roomTeardown(roomUUID string) {
+	// Close all channels and end all go routines
+	// nil the room
+
+	// log.Print("Tearing down room ", roomUUID)
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
 		return
 	}
 
-	var data map[string]interface{}
+	roomManager.broker.teardownChan <- true
+	roomManager.pointsMap = nil
+	roomManager.hiddenMap = nil
+}
 
-	rawBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		panic(err)
+func (rm *RoomManager) setPointsVisibility(isVisible bool) {
+	rm.isMapVisible = isVisible
+	rm.broker.updateChan <- true
+}
+
+func (rm *RoomManager) togglePointsVisibility() {
+	rm.isMapVisible = !(rm.isMapVisible)
+	rm.broker.updateChan <- true
+}
+
+func (rm *RoomManager) getPointsPayload() []byte {
+	var payload []byte
+	var err error
+	if rm.isMapVisible {
+		payload, err = json.Marshal(rm.pointsMap)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		payload, err = json.Marshal(rm.hiddenMap)
+		if err != nil {
+			panic(err)
+		}
 	}
+	return payload
+}
 
-	if err := json.Unmarshal(rawBytes, &data); err != nil {
-		panic(err)
+func (rm *RoomManager) resetPoints() {
+	rm.mu.Lock()
+	for key := range rm.pointsMap {
+		rm.pointsMap[key] = "0"
+		rm.hiddenMap[key] = ""
 	}
+	rm.isMapVisible = false
+	rm.mu.Unlock()
+	rm.broker.updateChan <- true
+}
 
-	key := data["key"].(string)
-	value := data["value"].(string)
+func (rm *RoomManager) userExists(key string) bool {
+	_, ok := rm.pointsMap[key]
+	return ok
+}
 
-	// Don't want unconnected users to
-	// add themselves
-	if !mapManager.keyExists(key) {
-		w.WriteHeader(http.StatusNotFound)
+func (rm *RoomManager) deleteUser(key string) {
+	rm.mu.Lock()
+	delete(rm.pointsMap, key)
+	delete(rm.hiddenMap, key)
+	rm.mu.Unlock()
+	rm.broker.updateChan <- true
+}
+
+func (rm *RoomManager) addUser(key string) {
+	rm.mu.Lock()
+	rm.pointsMap[key] = "0"
+	rm.hiddenMap[key] = ""
+	rm.mu.Unlock()
+	rm.broker.updateChan <- true
+}
+
+func (rm *RoomManager) setUserPoints(key string, value string) {
+	rm.mu.Lock()
+	rm.pointsMap[key] = value
+	rm.hiddenMap[key] = "?"
+	rm.mu.Unlock()
+	rm.broker.updateChan <- true
+}
+
+func setUserPointsHandler(w http.ResponseWriter, req *http.Request) {
+	roomUUID := req.PathValue("roomUUID")
+	username := req.PathValue("username")
+	points := req.PathValue("points")
+
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		http.NotFound(w, req)
 		return
 	}
 
-	mapManager.setKey(key, value)
+	// Check that user exists
+	if !roomManager.userExists(username) {
+		errMsg := fmt.Sprintf("User %s already exists.", username)
+		log.Print(errMsg)
+		http.Error(w, errMsg, 403)
+		return
+	}
 
+	roomManager.setUserPoints(username, points)
 	w.WriteHeader(http.StatusOK)
 }
 
-func resetAllKeysHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "PUT" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+func resetAllPointsHandler(w http.ResponseWriter, req *http.Request) {
+	roomUUID := req.PathValue("roomUUID")
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		http.NotFound(w, req)
 		return
 	}
 
-	// Authenticate
 	verifyHash := req.Header.Get("X-Admin-Hash")
-	if verifyHash != adminHash {
+	if verifyHash != roomManager.adminHash {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	fmt.Println("Resetting all keys")
-	mapManager.resetMap()
-
+	roomManager.resetPoints()
 	w.WriteHeader(http.StatusOK)
 }
 
-func toggleKeyVisibilityHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+func togglePointsVisibilityHandler(w http.ResponseWriter, req *http.Request) {
+	roomUUID := req.PathValue("roomUUID")
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		http.NotFound(w, req)
 		return
 	}
 
 	verifyHash := req.Header.Get("X-Admin-Hash")
-	if verifyHash != adminHash {
+	if verifyHash != roomManager.adminHash {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	fmt.Println("Toggling key visibility")
-	mapManager.toggleMapVisibility()
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("true"))
-}
-
-func hideKeysHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	verifyHash := req.Header.Get("X-Admin-Hash")
-	if verifyHash != adminHash {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	fmt.Println("Toggling key visibility")
-	mapManager.setMapVisibility(false)
-
+	roomManager.togglePointsVisibility()
 	w.WriteHeader(http.StatusOK)
 }
 
-type LoginDetails struct {
+type MainPageDetails struct {
+	RoomUUID  string
 	Key       string
 	AdminHash string
 }
 
-func serveMainPageHandler(w http.ResponseWriter, req *http.Request) {
-	key := req.URL.Query().Get("username")
+// Serves the main page for both Admins and Users
+func mainPageHandler(w http.ResponseWriter, req *http.Request) {
+	roomUUID := req.PathValue("roomUUID")
+	username := req.URL.Query().Get("username")
 
-	forbiddenTBAadmin := key == TBADMIN && isTBAdminLoggedIn
-	emptyKey := key == ""
-	tooManyUsers := len(mapManager.pointsMap) >= MAX_USERS
+	if username == "" {
+		http.Redirect(w, req, "/", http.StatusTemporaryRedirect)
+	}
 
-	if forbiddenTBAadmin || emptyKey || mapManager.keyExists(key) || tooManyUsers {
-		http.Redirect(w, req, "/", http.StatusForbidden)
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
+		errorPageRedirectHandler(w, http.StatusNotFound, errMsg)
 		return
 	}
 
-	var randNum *big.Int
-	var err error
+	if roomManager.userExists(username) {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("User %s already exists", username),
+		)
+		return
+	}
+
+	adminAlreadyPresent := username == TBADMIN && roomManager.isTBAdminLoggedIn
+	tooManyUsers := len(roomManager.pointsMap) >= MAX_USERS
+
+	if adminAlreadyPresent {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("Admin is already logged in."),
+		)
+		return
+	}
+
+	if tooManyUsers {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("This room has too many users."),
+		)
+		return
+	}
+
 	var randString string
-	if key == TBADMIN {
-		randNum, err = rand.Int(rand.Reader, big.NewInt(100000000000))
-		if err != nil {
-			panic(err)
-		}
-		randString = randNum.String()
-		adminHash = randString
+	if username == TBADMIN {
+		randString = roomManager.adminHash
+		roomManager.isTBAdminLoggedIn = true
 	} else {
 		randString = ""
 	}
 
-	loginDetails := LoginDetails{key, randString}
+	mainPageDetails := MainPageDetails{roomUUID, username, randString}
 
-	fmt.Println("Serving main page for user:", loginDetails)
-	if err := mainPage.Execute(w, loginDetails); err != nil {
+	if err := mainPage.Execute(w, mainPageDetails); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
 }
 
-func loginPageHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Serving login page for", req.Host)
-
-	if err := loginPage.Execute(w, nil); err != nil {
+func landingPageHandler(w http.ResponseWriter, req *http.Request) {
+	if err := landingPage.Execute(w, nil); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
+}
+
+type LoginPageDetails struct {
+	RoomUUID string
+}
+
+func createRoomHandler(w http.ResponseWriter, req *http.Request) {
+	var roomUUID string = uuid.NewString()
+
+	roomBroker := &Broker{
+		make(map[chan bool]bool),
+		make(chan (chan bool)),
+		make(chan (chan bool)),
+		make(chan bool),
+		make(chan bool),
+	}
+
+	roomManager := &RoomManager{
+		mu:                sync.Mutex{},
+		pointsMap:         make(map[string]string),
+		hiddenMap:         make(map[string]string),
+		isMapVisible:      true,
+		isTBAdminLoggedIn: false,
+		adminHash:         uuid.NewString(),
+		broker:            roomBroker,
+	}
+
+	roomManager.broker.Listen()
+
+	roomMap[roomUUID] = roomManager
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(roomUUID))
+	return
 }
 
 // Opens the connection with client
 // and remains open until client closes connection
-func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func sseEventHandler(w http.ResponseWriter, req *http.Request) {
+
 	// Set the headers related to event streaming.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -306,42 +362,61 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Transfer-Encoding", "chunked")
 
 	// Make sure that the writer supports flushing.
-	f, ok := w.(http.Flusher)
+	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
 
-	clientChan := make(chan bool)
-	b.newClients <- clientChan
+	roomUUID := req.URL.Query().Get("roomUUID")
+	username := req.URL.Query().Get("username")
 
-	key := req.URL.Query().Get("username")
-	fmt.Println("Subscribed:", key)
-
-	if key == TBADMIN {
-		isTBAdminLoggedIn = true
-		mapManager.setMapVisibility(false)
-	} else {
-		mapManager.addKey(key)
+	roomManager, keyExists := roomMap[roomUUID]
+	if !keyExists {
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
+		http.Error(w, errMsg, 404)
+		return
 	}
 
-	payload := mapManager.getMapPayload()
+	roomBroker := roomManager.broker
+
+	clientChan := make(chan bool)
+	roomBroker.newClients <- clientChan
+
+	if username == TBADMIN {
+		roomManager.isTBAdminLoggedIn = true
+		roomManager.setPointsVisibility(false)
+	} else {
+		roomManager.addUser(username)
+	}
+
+	payload := roomManager.getPointsPayload()
 	fmt.Fprintf(w, "data: %s\n\n", payload)
-	f.Flush()
+	flusher.Flush()
 
 	// Listen to the closing of the http connection via the CloseNotifier
+	// or a teardown signal to end the routine.
 	notify := w.(http.CloseNotifier).CloseNotify()
+	teardownChan := make(chan bool)
 	go func() {
-		<-notify
-		fmt.Println(key, "has disconnected")
-
-		if isTBAdminLoggedIn && key == TBADMIN {
-			isTBAdminLoggedIn = false
-			mapManager.setMapVisibility(true)
-		} else {
-			mapManager.deleteKey(key)
+		select {
+		case <-notify:
+			// client has left client-side
+			// fmt.Println(username, "has disconnected")
+			if roomManager.isTBAdminLoggedIn && username == TBADMIN {
+				roomTeardown(roomUUID)
+			} else {
+				roomBroker.dcClients <- clientChan
+				roomManager.deleteUser(username)
+			}
+			return
+		case <-teardownChan:
+			// Teardown has occured
+			// End the routine
+			// fmt.Println("Stopping notify routine for", username)
+			return
 		}
-		b.dcClients <- clientChan
 	}()
 
 	// Don't close the connection, instead loop endlessly.
@@ -351,38 +426,65 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		_, open := <-clientChan
 
 		if !open {
-			fmt.Println("Channel for", key, "is closed")
+			// fmt.Println("Channel for", username, "is closed.")
+			teardownChan <- true
 			break
 		}
 
-		payload := mapManager.getMapPayload()
+		payload := roomManager.getPointsPayload()
 		fmt.Fprintf(w, "data: %s\n\n", payload)
-		f.Flush()
+		flusher.Flush()
 	}
 }
 
+type ErrorPageDetails struct {
+	StatusCode   string
+	ErrorMessage string
+}
+
+func errorPageRedirectHandler(w http.ResponseWriter, status int, msg string) {
+	errorPageDetails := ErrorPageDetails{fmt.Sprintf("%d", status), msg}
+
+	if err := errorPage.Execute(w, errorPageDetails); err != nil {
+		log.Print(err.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	return
+}
+
 func main() {
+	log.Print("Starting TB Pointing Poker")
+
 	var err error
 	mainPage, err = template.ParseFS(files, "templates/main_page.tmpl.html")
 	if err != nil {
 		panic(err)
 	}
 
-	loginPage, err = template.ParseFS(files, "templates/login_page.tmpl.html")
+	landingPage, err = template.ParseFS(files, "templates/landing_page.tmpl.html")
 	if err != nil {
 		panic(err)
 	}
 
-	// Broker starts listening and managing channels
-	broker.Start()
+	errorPage, err = template.ParseFS(files, "templates/error_page.tmpl.html")
+	if err != nil {
+		panic(err)
+	}
 
-	http.HandleFunc("/setkey", setKeyHandler)
-	http.HandleFunc("/togglekeyvisibility", toggleKeyVisibilityHandler)
-	http.HandleFunc("/hidekeys", hideKeysHandler)
-	http.HandleFunc("/resetkeys", resetAllKeysHandler)
-	http.HandleFunc("/main", serveMainPageHandler)
-	http.HandleFunc("/", loginPageHandler)
-	http.Handle("/sse_events", broker)
+	mux := http.NewServeMux()
 
-	http.ListenAndServe("localhost:8090", nil)
+	mux.HandleFunc("GET /{$}", landingPageHandler)
+	mux.HandleFunc("POST /room/{roomUUID}/user/{username}/points/{points}", setUserPointsHandler)
+
+	mux.HandleFunc("POST /room/{roomUUID}/visibility", togglePointsVisibilityHandler)
+	mux.HandleFunc("POST /room/{roomUUID}/reset", resetAllPointsHandler)
+
+	mux.HandleFunc("GET /room/{roomUUID}", mainPageHandler)
+
+	mux.HandleFunc("POST /room/{$}", createRoomHandler)
+
+	mux.HandleFunc("GET /sse_events/{$}", sseEventHandler)
+
+	log.Fatal(http.ListenAndServe(":8090", mux))
 }

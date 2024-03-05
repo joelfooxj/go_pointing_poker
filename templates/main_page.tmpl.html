@@ -5,12 +5,41 @@
 		<title>PP-Main</title>
 		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+		<style>
+			.sectionWrap {
+				border: 1px solid grey;
+				padding: 20px; 
+				margin-top: 20px;
+				margin-bottom: 20px;
+				border-radius: 5px;
+			}
+			.warningBanner {
+				color: red;
+			}
+		</style>
 	</head>
 	<body>
 		<div class="h-100 d-flex align-items-center justify-content-center">
 			<div>
 				<h1> TB Pointing Poker </h1>
-				<h2 id="container">
+				<small> made with ❤ by Joel Foo. <a href="https://github.com/joelfooxj/go_pointing_poker"> Source.</a> </small>
+				<br>
+				<small class="warningBanner"> Warning: reloading or navigating away from this page will destroy the room. </small>
+				<br>
+				<br>
+				<b> Room ID:</b>
+				<br>
+				<code> {{ .RoomUUID}}</code>
+				<!-- Requires TLS -->
+				<!-- <button 
+					id="copyBtn"
+					onclick="copyRoomUUIDToClipboard()" 
+					class="btn btn-primary">
+						Copy RoomID
+				</button> -->
+				<small id="copiedText" style="color: green;"></small>
+				<h2 id="pointsContainer" class="sectionWrap">
+					<div id="pointsStatus"></div>
 					<ul id="pointsMap">
 					</ul>
 				</h2>
@@ -20,49 +49,72 @@
 		</div>
 	</body>
 	<script type="text/javascript">
+		// Note: Most browsers require TLS for copy to clipboard to work.
+		function copyRoomUUIDToClipboard(){
+			navigator.clipboard.writeText("{{ .RoomUUID}}")
+			console.log("{{ .RoomUUID}} has been copied! ")
+			const copiedText = document.getElementById("copiedText")
+			copiedText.innerHTML = "Copied!"
+			setTimeout(() => {
+				copiedText.innerHTML = ""
+			}, 1000)
+		}
+		
 		// Detect window close or navigate away
 		window.onbeforeunload = () => {
 			source.close()
 		}
 
-		const currentKey = "{{ .Key}}"
+		const roomUUID = "{{ .RoomUUID}}"
+		const currentUser = "{{ .Key}}"
 		const adminHash = "{{ .AdminHash}}"
 
-		
 		// Subscribe to and handle SSE events
-		var source = new EventSource(`/sse_events?username=${currentKey}`);
+		var source = new EventSource(`/sse_events?roomUUID=${roomUUID}&username=${currentUser}`);
 		source.onopen = (event) => {
 			console.log(`Connection opened: ${event.data}`)
 		}
+
 		source.onerror = (event) => {
 			console.log(`Connection error: ${event.data}`)
 			source.close()
-			window.location.href='/login'
+			window.location.href='/'
 		}
+
 		source.onmessage = (event) => {
 			console.log(`Received data: ${event.data}`)
-			const pointsMap = JSON.parse(event.data);
-			var element = document.getElementById("pointsMap")
-			// Remove all children and set the current points map 
-			while (element.firstChild) {
-				element.removeChild(element.firstChild);
+			const userPoints = JSON.parse(event.data);
+			const hasUsers = Object.keys(userPoints).length > 0
+			
+			// No users found
+			var pointsStatus = document.getElementById("pointsStatus")
+			if(!hasUsers){
+				pointsStatus.innerHTML = "There are no users in the room."
+			} else {
+				pointsStatus.innerHTML = ""
 			}
-			console.log(`Points map: ${JSON.stringify(pointsMap)}`)
-			for(const key of Object.keys(pointsMap).sort()){ 
+
+			// Remove all children and set the current points map 
+			var pointsMapElement = document.getElementById("pointsMap")
+			while (pointsMapElement.firstChild) {
+				pointsMapElement.removeChild(pointsMapElement.firstChild);
+			}
+			
+			for(const key of Object.keys(userPoints).sort()){ 
 				const listItem = document.createElement("li")
-				listItem.innerHTML = `<strong>${key}</strong>: ${pointsMap[key]}`
-				element.appendChild(listItem)
+				listItem.innerHTML = `<strong>${key}</strong>: ${userPoints[key]}`
+				pointsMapElement.appendChild(listItem)
 			}
 		}
 
 		window.onblur = function() { 
-			if(currentKey === "TBADMIN"){
+			if(currentUser === "TBADMIN"){
 				resetPoints()
 			}
 		}
 
 		const buttons = document.getElementById("buttons")
-		switch (currentKey) {
+		switch (currentUser) {
 			case "":
 				alert("You must be logged in to view this page")
 				window.location.replace("/");
@@ -99,7 +151,7 @@
 					const button = document.createElement("button")
 					button.innerHTML = point
 					button.onclick = () => {
-						onSetKey(point)
+						setPoint(point)
 					}
 					button.classList.add("btn")
 					button.classList.add("btn-primary")
@@ -111,8 +163,8 @@
 		async function resetPoints(){
 			console.log(`Requested to reset all points to 0`)
 			await fetchWrapper({
-				url: "/resetkeys",
-				method: "PUT", 
+				url: `/room/${roomUUID}/reset`,
+				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}
@@ -122,33 +174,22 @@
 		async function togglePointsVisibility(){
 			console.log(`Requested to toggle points visibility`)
 			const response = await fetchWrapper({
-				url: "/togglekeyvisibility",
+				url: `/room/${roomUUID}/visibility`,
 				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}
 			})
-
-			const responseText = await response.text()
-			console.log(responseText)
-			const isVisible = responseText === "true"
-			return isVisible
 		}
 
-		async function onSetKey(e){
-			console.log(`Requested to set value of ${currentKey} to ${e}`)
+		async function setPoint(value){
+			console.log(`Requested to set value of ${currentUser} to ${value}`)
 			await fetchWrapper({
-				url: "/setkey",
+				url: `/room/${roomUUID}/user/${currentUser}/points/${value}`,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(
-					{
-						"key": currentKey,
-						"value": e
-					}
-				)
+				}
 			})
 		}
 
