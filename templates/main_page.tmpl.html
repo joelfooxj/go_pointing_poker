@@ -80,7 +80,6 @@
 			var pointsStatus = document.getElementById("pointsStatus")
 			if(!hasUsers){
 				pointsStatus.innerHTML = "There are no users in the room."
-				return
 			} else {
 				pointsStatus.innerHTML = ""
 			}
@@ -154,8 +153,8 @@
 		async function resetPoints(){
 			console.log(`Requested to reset all points to 0`)
 			await fetchWrapper({
-				url: `/resetuserpoints?roomUUID=${roomUUID}`,
-				method: "PUT", 
+				url: `/room/${roomUUID}/reset`,
+				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}
@@ -165,33 +164,22 @@
 		async function togglePointsVisibility(){
 			console.log(`Requested to toggle points visibility`)
 			const response = await fetchWrapper({
-				url: `/togglepointsvisibility?roomUUID=${roomUUID}`,
+				url: `/room/${roomUUID}/visibility`,
 				method: "POST", 
 				headers: {
 					"X-Admin-Hash": adminHash
 				}
 			})
-
-			const responseText = await response.text()
-			console.log(responseText)
-			const isVisible = responseText === "true"
-			return isVisible
 		}
 
 		async function setPoint(value){
 			console.log(`Requested to set value of ${currentUser} to ${value}`)
 			await fetchWrapper({
-				url: `/setuserpoints?roomUUID=${roomUUID}`,
+				url: `/room/${roomUUID}/user/${currentUser}/points/${value}`,
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(
-					{
-						username: currentUser,
-						points: value
-					}
-				)
+				}
 			})
 		}
 

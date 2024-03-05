@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
@@ -67,7 +66,7 @@ func (b *Broker) Listen() {
 			case hasUpdate := <-b.updateChan:
 				// Iterate through and relay the update signal to
 				// each client channel
-				log.Printf("Notifying %d clients", len(b.clients))
+				// log.Printf("Notifying %d clients", len(b.clients))
 				for c := range b.clients {
 					c <- hasUpdate
 				}
@@ -182,66 +181,31 @@ func (rm *RoomManager) setUserPoints(key string, value string) {
 }
 
 func setUserPointsHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	roomUUID := req.URL.Query().Get("roomUUID")
-	if roomUUID == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
+	roomUUID := req.PathValue("roomUUID")
+	username := req.PathValue("username")
+	points := req.PathValue("points")
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room:", roomUUID)
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
 
-	var data map[string]interface{}
-
-	rawBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := json.Unmarshal(rawBytes, &data); err != nil {
-		panic(err)
-	}
-
-	username := data["username"].(string)
-	points := data["points"].(string)
-
-	// Don't want unconnected users to
-	// add themselves
+	// Check that user exists
 	if !roomManager.userExists(username) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	roomManager.setUserPoints(username, points)
-
 	w.WriteHeader(http.StatusOK)
 }
 
 func resetAllPointsHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "PUT" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	roomUUID := req.URL.Query().Get("roomUUID")
-	if roomUUID == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
+	roomUUID := req.PathValue("roomUUID")
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room:", roomUUID)
-		http.Error(w, "Internal Server Error", 500)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -251,28 +215,15 @@ func resetAllPointsHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	fmt.Println("Resetting all keys")
 	roomManager.resetPoints()
-
 	w.WriteHeader(http.StatusOK)
 }
 
 func togglePointsVisibilityHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	roomUUID := req.URL.Query().Get("roomUUID")
-	if roomUUID == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
+	roomUUID := req.PathValue("roomUUID")
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room:", roomUUID)
-		http.Error(w, "Internal Server Error", 500)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -282,11 +233,8 @@ func togglePointsVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	fmt.Println("Toggling key visibility")
 	roomManager.togglePointsVisibility()
-
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("true"))
 }
 
 type MainPageDetails struct {
@@ -298,7 +246,6 @@ type MainPageDetails struct {
 // Serves the main page for both Admins and Users
 func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	roomUUID := strings.TrimPrefix(req.URL.Path, "/room/")
-	fmt.Println("Got roomUUID: ", roomUUID)
 	username := req.URL.Query().Get("username")
 
 	if username == "" {
@@ -332,7 +279,6 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 
 	mainPageDetails := MainPageDetails{roomUUID, username, randString}
 
-	fmt.Println("Serving main page for user:", mainPageDetails)
 	if err := mainPage.Execute(w, mainPageDetails); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
@@ -341,8 +287,6 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func landingPageHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Serving landing page for", req.Host)
-
 	if err := landingPage.Execute(w, nil); err != nil {
 		log.Print(err.Error())
 		http.Error(w, "Internal Server Error", 500)
@@ -356,7 +300,6 @@ type LoginPageDetails struct {
 
 func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 	var roomUUID string = uuid.NewString()
-	fmt.Println("Creating a room with uuid", roomUUID)
 
 	roomBroker := &Broker{
 		make(map[chan bool]bool),
@@ -387,7 +330,6 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 // Opens the connection with client
 // and remains open until client closes connection
 func sseEventHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("connecting to ", req.Host)
 
 	// Set the headers related to event streaming.
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -404,12 +346,10 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 
 	roomUUID := req.URL.Query().Get("roomUUID")
 	username := req.URL.Query().Get("username")
-	fmt.Println(username, " subscribed to room", roomUUID)
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room:", roomUUID)
-		http.Error(w, "Internal Server Error", 500)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -437,7 +377,7 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		select {
 		case <-notify:
 			// client has left client-side
-			fmt.Println(username, "has disconnected")
+			// fmt.Println(username, "has disconnected")
 			if roomManager.isTBAdminLoggedIn && username == TBADMIN {
 				roomTeardown(roomUUID)
 			} else {
@@ -448,7 +388,7 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		case <-teardownChan:
 			// Teardown has occured
 			// End the routine
-			fmt.Println("Stopping notify routine for", username)
+			// fmt.Println("Stopping notify routine for", username)
 			return
 		}
 	}()
@@ -460,7 +400,7 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		_, open := <-clientChan
 
 		if !open {
-			fmt.Println("Channel for", username, "is closed.")
+			// fmt.Println("Channel for", username, "is closed.")
 			teardownChan <- true
 			break
 		}
@@ -472,6 +412,7 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	log.Print("Starting TB Pointing Poker")
 	var err error
 	mainPage, err = template.ParseFS(files, "templates/main_page.tmpl.html")
 	if err != nil {
@@ -486,10 +427,10 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /{$}", landingPageHandler)
-	mux.HandleFunc("POST /setuserpoints", setUserPointsHandler)
+	mux.HandleFunc("POST /room/{roomUUID}/user/{username}/points/{points}", setUserPointsHandler)
 
-	mux.HandleFunc("/togglepointsvisibility", togglePointsVisibilityHandler)
-	mux.HandleFunc("/resetuserpoints", resetAllPointsHandler)
+	mux.HandleFunc("POST /room/{roomUUID}/visibility", togglePointsVisibilityHandler)
+	mux.HandleFunc("POST /room/{roomUUID}/reset", resetAllPointsHandler)
 
 	mux.HandleFunc("GET /room/{roomUUID}", mainPageHandler)
 
