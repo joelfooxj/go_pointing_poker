@@ -13,6 +13,9 @@
 				margin-bottom: 20px;
 				border-radius: 5px;
 			}
+			.warningBanner {
+				color: red;
+			}
 		</style>
 	</head>
 	<body>
@@ -20,6 +23,8 @@
 			<div>
 				<h1> TB Pointing Poker </h1>
 				<small> made with ❤ by Joel Foo. <a href="https://github.com/joelfooxj/go_pointing_poker"> Source.</a> </small>
+				<br>
+				<small class="warningBanner"> Warning: reloading or navigating away from this page will destroy the room. </small>
 				<br>
 				<br>
 				<button 
@@ -52,9 +57,6 @@
 		
 		// Detect window close or navigate away
 		window.onbeforeunload = () => {
-			if(currentUser === 'TBADMIN'){
-				alert('Warning: reloading or navigating away from the page will destroy the room.')
-			}
 			source.close()
 		}
 

@@ -8,7 +8,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -23,6 +22,7 @@ var (
 	files       embed.FS
 	mainPage    *template.Template
 	landingPage *template.Template
+	errorPage   *template.Template
 
 	roomMap = make(map[string]*RoomManager)
 )
@@ -101,10 +101,11 @@ func roomTeardown(roomUUID string) {
 	// Close all channels and end all go routines
 	// nil the room
 
-	log.Print("Tearing down room ", roomUUID)
+	// log.Print("Tearing down room ", roomUUID)
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		log.Print("Map does not contain room ", roomUUID)
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
 		return
 	}
 
@@ -187,13 +188,15 @@ func setUserPointsHandler(w http.ResponseWriter, req *http.Request) {
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		http.Error(w, "Internal Server Error", 500)
+		http.NotFound(w, req)
 		return
 	}
 
 	// Check that user exists
 	if !roomManager.userExists(username) {
-		w.WriteHeader(http.StatusNotFound)
+		errMsg := fmt.Sprintf("User %s already exists.", username)
+		log.Print(errMsg)
+		http.Error(w, errMsg, 403)
 		return
 	}
 
@@ -205,7 +208,7 @@ func resetAllPointsHandler(w http.ResponseWriter, req *http.Request) {
 	roomUUID := req.PathValue("roomUUID")
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		w.WriteHeader(http.StatusNotFound)
+		http.NotFound(w, req)
 		return
 	}
 
@@ -223,7 +226,7 @@ func togglePointsVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 	roomUUID := req.PathValue("roomUUID")
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		w.WriteHeader(http.StatusNotFound)
+		http.NotFound(w, req)
 		return
 	}
 
@@ -245,7 +248,7 @@ type MainPageDetails struct {
 
 // Serves the main page for both Admins and Users
 func mainPageHandler(w http.ResponseWriter, req *http.Request) {
-	roomUUID := strings.TrimPrefix(req.URL.Path, "/room/")
+	roomUUID := req.PathValue("roomUUID")
 	username := req.URL.Query().Get("username")
 
 	if username == "" {
@@ -256,22 +259,43 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	if !keyExists {
 		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
 		log.Print(errMsg)
-		http.Error(w, errMsg, 404)
+		errorPageRedirectHandler(w, http.StatusNotFound, errMsg)
 		return
 	}
 
-	forbiddenTBAdmin := username == TBADMIN && roomManager.isTBAdminLoggedIn
+	if roomManager.userExists(username) {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("User %s already exists", username),
+		)
+		return
+	}
+
+	adminAlreadyPresent := username == TBADMIN && roomManager.isTBAdminLoggedIn
 	tooManyUsers := len(roomManager.pointsMap) >= MAX_USERS
 
-	if forbiddenTBAdmin || roomManager.userExists(username) || tooManyUsers {
-		http.Error(w, "", http.StatusForbidden)
+	if adminAlreadyPresent {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("Admin is already logged in."),
+		)
+		return
+	}
+
+	if tooManyUsers {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("This room has too many users."),
+		)
 		return
 	}
 
 	var randString string
 	if username == TBADMIN {
-		randString = uuid.NewString()
-		roomManager.adminHash = randString
+		randString = roomManager.adminHash
 		roomManager.isTBAdminLoggedIn = true
 	} else {
 		randString = ""
@@ -315,7 +339,7 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 		hiddenMap:         make(map[string]string),
 		isMapVisible:      true,
 		isTBAdminLoggedIn: false,
-		adminHash:         "",
+		adminHash:         uuid.NewString(),
 		broker:            roomBroker,
 	}
 
@@ -349,7 +373,9 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
-		w.WriteHeader(http.StatusNotFound)
+		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
+		log.Print(errMsg)
+		http.Error(w, errMsg, 404)
 		return
 	}
 
@@ -411,8 +437,25 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+type ErrorPageDetails struct {
+	StatusCode   string
+	ErrorMessage string
+}
+
+func errorPageRedirectHandler(w http.ResponseWriter, status int, msg string) {
+	errorPageDetails := ErrorPageDetails{fmt.Sprintf("%d", status), msg}
+
+	if err := errorPage.Execute(w, errorPageDetails); err != nil {
+		log.Print(err.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	return
+}
+
 func main() {
 	log.Print("Starting TB Pointing Poker")
+
 	var err error
 	mainPage, err = template.ParseFS(files, "templates/main_page.tmpl.html")
 	if err != nil {
@@ -420,6 +463,11 @@ func main() {
 	}
 
 	landingPage, err = template.ParseFS(files, "templates/landing_page.tmpl.html")
+	if err != nil {
+		panic(err)
+	}
+
+	errorPage, err = template.ParseFS(files, "templates/error_page.tmpl.html")
 	if err != nil {
 		panic(err)
 	}
