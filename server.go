@@ -71,7 +71,7 @@ func (b *Broker) Listen() {
 					c <- hasUpdate
 				}
 			case <-b.teardownChan:
-				log.Printf("Teardown signal received")
+				// log.Printf("Teardown signal received")
 				// Close all client channels and end the routine
 				for c := range b.clients {
 					close(c)
