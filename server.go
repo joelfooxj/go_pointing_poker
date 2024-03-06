@@ -487,4 +487,10 @@ func main() {
 	mux.HandleFunc("GET /sse_events/{$}", sseEventHandler)
 
 	log.Fatal(http.ListenAndServe(":8090", mux))
+
+	// log.Fatal(http.ListenAndServeTLS(
+	// 	":443",
+	// 	"/etc/letsencrypt/live/tbpointingpoker.com/fullchain.pem",
+	// 	"/etc/letsencrypt/live/tbpointingpoker.com/privkey.pem",
+	// 	mux))
 }
