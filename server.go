@@ -251,16 +251,20 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	roomUUID := req.PathValue("roomUUID")
 	username := req.URL.Query().Get("username")
 
-	if username == "" {
-		http.Redirect(w, req, "/", http.StatusTemporaryRedirect)
-	}
-
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
 		errMsg := fmt.Sprintf("Room %s does not exist.", roomUUID)
 		log.Print(errMsg)
 		errorPageRedirectHandler(w, http.StatusNotFound, errMsg)
 		return
+	}
+
+	if username == "" {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("You must provide a username to join a room."),
+		)
 	}
 
 	if roomManager.userExists(username) {
