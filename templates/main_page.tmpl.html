@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>PP-Main</title>
+		<title>Pointing Poker</title>
 		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
 		<style>
@@ -24,7 +24,9 @@
 				<h1> TB Pointing Poker </h1>
 				<small> made with ❤ by Joel Foo. <a href="https://github.com/joelfooxj/go_pointing_poker"> Source.</a> </small>
 				<br>
-				<small id="adminWarning" style="color: red"> Warning: reloading or navigating away from this page will destroy the room. </small>
+				<small id="adminWarning" style="color: red"> 
+					Warning: reloading or navigating away from this page will destroy the room. 
+				</small>
 				<br>
 				<br>
 				<b> Room ID (click to copy):</b>
@@ -94,6 +96,12 @@
 				const listItem = document.createElement("li")
 				listItem.innerHTML = `<strong>${key}</strong>: ${userPoints[key]}`
 				pointsMapElement.appendChild(listItem)
+			}
+		}
+
+		window.onload = () => {
+			if(currentUser !== 'TBADMIN'){
+				document.getElementById("adminWarning").innerHTML = ""
 			}
 		}
 
