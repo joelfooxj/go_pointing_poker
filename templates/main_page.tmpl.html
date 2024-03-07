@@ -54,10 +54,6 @@
 			}, 1000)
 		}
 		
-		// Detect window close or navigate away
-		window.onbeforeunload = () => {
-			source.close()
-		}
 
 		const roomUUID = "{{ .RoomUUID}}"
 		const currentUser = "{{ .Key}}"
@@ -101,8 +97,19 @@
 			}
 		}
 
-		window.onblur = function() { 
-			if(currentUser === "TBADMIN"){
+		// Detect window close or navigate away
+		window.onbeforeunload = (e) => {
+			if(currentUser === 'TBADMIN'){
+				e.preventDefault()
+			}
+		}
+
+		window.onunload = () => {
+			source.close()
+		}
+
+		window.onblur = () => { 
+			if(currentUser === "TBADMIN" && source.readyState !== source.CLOSED){
 				resetPoints()
 			}
 		}
