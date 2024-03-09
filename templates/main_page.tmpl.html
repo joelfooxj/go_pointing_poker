@@ -25,7 +25,7 @@
 				<small> made with ❤ by Joel Foo. <a href="https://github.com/joelfooxj/go_pointing_poker"> Source.</a> </small>
 				<br>
 				<small id="adminWarning" style="color: red"> 
-					Warning: reloading or navigating away from this page will destroy the room. 
+					Warning: reloading, closing the browser tab, or going to a different URL will destroy this room.
 				</small>
 				<br>
 				<br>
@@ -126,7 +126,7 @@
 		switch (currentUser) {
 			case "":
 				alert("You must be logged in to view this page")
-				window.location.replace("/");
+				window.location.href = "/";
 				break;
 			case "TBADMIN":
 				// Show the hide and clear buttons

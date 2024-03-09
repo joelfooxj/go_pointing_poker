@@ -283,7 +283,7 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 		errorPageRedirectHandler(
 			w,
 			http.StatusForbidden,
-			fmt.Sprintf("Admin is already logged in."),
+			fmt.Sprintf("Admin is already logged in. If you were the admin and had reloaded, the room is now destroyed."),
 		)
 		return
 	}
