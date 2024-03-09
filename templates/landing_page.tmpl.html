@@ -39,6 +39,7 @@
 							placeholder="Enter the Room ID"
 							required
 						>
+						<small id="roomErrorMsg" style="color: red"></small>
 						<br>
 						<label for="username">
 							<b>Username</b>
@@ -51,6 +52,7 @@
 							placeholder="Enter your username"
 							required
 						>
+						<small id="nameErrorMsg" style="color: red"></small>
 						<br>
 						<button 
 							type="submit" 
@@ -65,9 +67,20 @@
 	<script>
 		document.getElementById('loginForm').addEventListener('submit', function(event) {
 			event.preventDefault()
-			const roomUUID = this.elements['roomUUIDInput'].value
-			const username = this.elements['usernameInput'].value
-			window.location.href = `/room/${roomUUID.trim()}?username=${username.trim()}`
+			let fieldsValid = true
+			const roomUUID = this.elements['roomUUIDInput'].value.trim()
+			if(roomUUID.length > 30){
+				document.getElementById('roomErrorMsg').innerHTML = 'RoomID is too long.'
+				fieldsValid = false
+			}
+			const username = this.elements['usernameInput'].value.trim()
+			if(username.length > 30){
+				document.getElementById('nameErrorMsg').innerHTML = 'Username is too long.'
+				fieldsValid = false
+			}
+			if(fieldsValid){
+				window.location.href = `/room/${roomUUID}?username=${username}`
+			}
 		})
 
 		async function createRoom(){
