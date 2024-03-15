@@ -69,8 +69,8 @@
 			event.preventDefault()
 			let fieldsValid = true
 			const roomUUID = this.elements['roomUUIDInput'].value.trim()
-			if(roomUUID.length > 30){
-				document.getElementById('roomErrorMsg').innerHTML = 'RoomID is too long.'
+			if(roomUUID.length !== 36){
+				document.getElementById('roomErrorMsg').innerHTML = 'RoomID is not valid.'
 				fieldsValid = false
 			}
 			const username = this.elements['usernameInput'].value.trim()
