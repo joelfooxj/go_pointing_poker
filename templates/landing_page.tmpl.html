@@ -55,6 +55,7 @@
 						<small id="nameErrorMsg" style="color: red"></small>
 						<br>
 						<button 
+							id="submitBtn"
 							type="submit" 
 							class="btn btn-primary"
 						>
@@ -65,6 +66,13 @@
 		</div>
 	</body>
 	<script>
+		const urlQueryParams = new URLSearchParams(window.location.search)
+		if(urlQueryParams && urlQueryParams.get('room') != null){
+			const roomUUID = urlQueryParams.get('room')
+			document.getElementById('roomUUIDInput').value = roomUUID
+			document.getElementById('submitBtn').click()
+		}
+
 		document.getElementById('loginForm').addEventListener('submit', function(event) {
 			event.preventDefault()
 			let fieldsValid = true

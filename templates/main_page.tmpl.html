@@ -30,10 +30,10 @@
 				</small>
 				<br>
 				<br>
-				<b> Room ID (click to copy):</b>
+				<b> Click to copy URL:</b>
 				<br>
 				<!-- Requires TLS -->
-				<code onclick="copyRoomUUIDToClipboard()" class="roomIDCode"> {{ .RoomUUID}}</code>
+				<code id="urlString" onclick="copyURLuuidToClipboard()" class="roomIDCode"> {{ .RoomUUID}}</code>
 				<small id="copiedText" style="color: green;"></small>
 				<h2 id="pointsContainer" class="sectionWrap">
 					<div id="pointsStatus"></div>
@@ -46,21 +46,24 @@
 		</div>
 	</body>
 	<script type="text/javascript">
+		const roomUUID = "{{ .RoomUUID}}"
+		const currentUser = "{{ .Key}}"
+		const adminHash = "{{ .AdminHash}}"
+
+		const urlString = `${window.location.origin}/?room=${roomUUID}`
+		document.getElementById('urlString').innerHTML = urlString
+
 		// Note: Most browsers require TLS for copy to clipboard to work.
-		function copyRoomUUIDToClipboard(){
-			navigator.clipboard.writeText("{{ .RoomUUID}}")
-			console.log("{{ .RoomUUID}} has been copied! ")
+		function copyURLuuidToClipboard(){
+			navigator.clipboard.writeText(urlString)
+			console.log(`${urlString} copied!`)
 			const copiedText = document.getElementById("copiedText")
-			copiedText.innerHTML = "Copied!"
+			copiedText.innerHTML = "URL Copied!"
 			setTimeout(() => {
 				copiedText.innerHTML = ""
 			}, 1000)
 		}
 		
-
-		const roomUUID = "{{ .RoomUUID}}"
-		const currentUser = "{{ .Key}}"
-		const adminHash = "{{ .AdminHash}}"
 
 		// Subscribe to and handle SSE events
 		var source = new EventSource(`/sse_events?roomUUID=${roomUUID}&username=${currentUser}`);
@@ -156,7 +159,7 @@
 
 				break;
 			default:
-				const points = ['1','2','3','5','8', '\u2615']
+				const points = ['1','2','3','5','8','13','\u2615']
 				for(const point of points){
 					const button = document.createElement("button")
 					button.innerHTML = point
