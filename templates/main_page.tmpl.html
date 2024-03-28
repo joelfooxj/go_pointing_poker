@@ -30,11 +30,10 @@
 				</small>
 				<br>
 				<br>
-				<b> Click to copy URL:</b>
+				<b id="copyBanner"> Click to copy URL:</b>
 				<br>
 				<!-- Requires TLS -->
 				<code id="urlString" onclick="copyURLuuidToClipboard()" class="roomIDCode"> {{ .RoomUUID}}</code>
-				<small id="copiedText" style="color: green;"></small>
 				<h2 id="pointsContainer" class="sectionWrap">
 					<div id="pointsStatus"></div>
 					<ul id="pointsMap">
@@ -57,10 +56,10 @@
 		function copyURLuuidToClipboard(){
 			navigator.clipboard.writeText(urlString)
 			console.log(`${urlString} copied!`)
-			const copiedText = document.getElementById("copiedText")
-			copiedText.innerHTML = "URL Copied!"
+			const copyBanner = document.getElementById("copyBanner")
+			copyBanner.innerHTML = "Copied!"
 			setTimeout(() => {
-				copiedText.innerHTML = ""
+				copyBanner.innerHTML = "Click to copy URL:"
 			}, 1000)
 		}
 		
