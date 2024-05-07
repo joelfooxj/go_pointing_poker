@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const TBADMIN = "TBADMIN"
+const ADMIN = "ADMIN"
 const MAX_USERS = 20
 
 // Global vars
@@ -88,13 +88,13 @@ func (b *Broker) Listen() {
 }
 
 type RoomManager struct {
-	mu                sync.Mutex
-	pointsMap         map[string]string
-	hiddenMap         map[string]string
-	isMapVisible      bool
-	isTBAdminLoggedIn bool
-	adminHash         string
-	broker            *Broker
+	mu              sync.Mutex
+	pointsMap       map[string]string
+	hiddenMap       map[string]string
+	isMapVisible    bool
+	isAdminLoggedIn bool
+	adminHash       string
+	broker          *Broker
 }
 
 func roomTeardown(roomUUID string) {
@@ -276,7 +276,7 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	adminAlreadyPresent := username == TBADMIN && roomManager.isTBAdminLoggedIn
+	adminAlreadyPresent := username == ADMIN && roomManager.isAdminLoggedIn
 	tooManyUsers := len(roomManager.pointsMap) >= MAX_USERS
 
 	if adminAlreadyPresent {
@@ -298,9 +298,9 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var randString string
-	if username == TBADMIN {
+	if username == ADMIN {
 		randString = roomManager.adminHash
-		roomManager.isTBAdminLoggedIn = true
+		roomManager.isAdminLoggedIn = true
 	} else {
 		randString = ""
 	}
@@ -338,13 +338,13 @@ func createRoomHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	roomManager := &RoomManager{
-		mu:                sync.Mutex{},
-		pointsMap:         make(map[string]string),
-		hiddenMap:         make(map[string]string),
-		isMapVisible:      true,
-		isTBAdminLoggedIn: false,
-		adminHash:         uuid.NewString(),
-		broker:            roomBroker,
+		mu:              sync.Mutex{},
+		pointsMap:       make(map[string]string),
+		hiddenMap:       make(map[string]string),
+		isMapVisible:    true,
+		isAdminLoggedIn: false,
+		adminHash:       uuid.NewString(),
+		broker:          roomBroker,
 	}
 
 	roomManager.broker.Listen()
@@ -388,8 +388,8 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 	clientChan := make(chan bool)
 	roomBroker.newClients <- clientChan
 
-	if username == TBADMIN {
-		roomManager.isTBAdminLoggedIn = true
+	if username == ADMIN {
+		roomManager.isAdminLoggedIn = true
 		roomManager.setPointsVisibility(false)
 	} else {
 		roomManager.addUser(username)
@@ -408,7 +408,7 @@ func sseEventHandler(w http.ResponseWriter, req *http.Request) {
 		case <-notify:
 			// client has left client-side
 			// fmt.Println(username, "has disconnected")
-			if roomManager.isTBAdminLoggedIn && username == TBADMIN {
+			if roomManager.isAdminLoggedIn && username == ADMIN {
 				roomTeardown(roomUUID)
 			} else {
 				roomBroker.dcClients <- clientChan
@@ -494,7 +494,7 @@ func main() {
 
 	// log.Fatal(http.ListenAndServeTLS(
 	// 	":443",
-	// 	"/etc/letsencrypt/live/tbpointingpoker.com/fullchain.pem",
-	// 	"/etc/letsencrypt/live/tbpointingpoker.com/privkey.pem",
+	// 	"/etc/letsencrypt/live/jfpointingpoker.com/fullchain.pem",
+	// 	"/etc/letsencrypt/live/jfpointingpoker.com/privkey.pem",
 	// 	mux))
 }

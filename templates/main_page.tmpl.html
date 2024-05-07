@@ -22,7 +22,7 @@
 	<body>
 		<div class="h-100 d-flex align-items-center justify-content-center" style="padding-left: 50px; padding-right: 50px;">
 			<div>
-				<h1> TB Pointing Poker </h1>
+				<h1> JF Pointing Poker </h1>
 				<small> made with ❤ by Joel Foo. <a href="https://github.com/joelfooxj/go_pointing_poker"> Source.</a> </small>
 				<br>
 				<small id="adminWarning" style="color: red"> 
@@ -103,14 +103,14 @@
 		}
 
 		window.onload = () => {
-			if(currentUser !== 'TBADMIN'){
+			if(currentUser !== 'ADMIN'){
 				document.getElementById("adminWarning").innerHTML = ""
 			}
 		}
 
 		// Detect window close or navigate away
 		window.onbeforeunload = (e) => {
-			if(currentUser === 'TBADMIN'){
+			if(currentUser === 'ADMIN'){
 				e.preventDefault()
 			}
 		}
@@ -120,7 +120,7 @@
 		}
 
 		window.onblur = () => { 
-			if(currentUser === "TBADMIN" && source.readyState !== source.CLOSED){
+			if(currentUser === "ADMIN" && source.readyState !== source.CLOSED){
 				resetPoints()
 			}
 		}
@@ -131,7 +131,7 @@
 				alert("You must be logged in to view this page")
 				window.location.href = "/";
 				break;
-			case "TBADMIN":
+			case "ADMIN":
 				// Show the hide and clear buttons
 			  const adminBtnProps = [
 					{
