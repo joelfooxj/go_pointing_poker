@@ -1,5 +1,5 @@
-# tb_pointing_poker
-Simple pointing poker app served up in a single GO build.  
+# jf_pointing_poker
+Simple pointing poker app served up in a single GO build.
 
 # How to run
 - Clone this repo 
