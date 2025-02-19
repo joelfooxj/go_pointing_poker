@@ -241,15 +241,17 @@ func togglePointsVisibilityHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 type MainPageDetails struct {
-	RoomUUID  string
-	Key       string
-	AdminHash string
+	RoomUUID        string
+	Key             string
+	AdminHash       string
+	EnableAutoClear string
 }
 
 // Serves the main page for both Admins and Users
 func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 	roomUUID := req.PathValue("roomUUID")
 	username := req.URL.Query().Get("username")
+	enableAutoClear := req.URL.Query().Get("enableAutoClear")
 
 	roomManager, keyExists := roomMap[roomUUID]
 	if !keyExists {
@@ -305,7 +307,7 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 		randString = ""
 	}
 
-	mainPageDetails := MainPageDetails{roomUUID, username, randString}
+	mainPageDetails := MainPageDetails{roomUUID, username, randString, enableAutoClear}
 
 	if err := mainPage.Execute(w, mainPageDetails); err != nil {
 		log.Print(err.Error())

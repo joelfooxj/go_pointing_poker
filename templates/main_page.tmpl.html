@@ -48,6 +48,7 @@
 		const roomUUID = "{{ .RoomUUID}}"
 		const currentUser = "{{ .Key}}"
 		const adminHash = "{{ .AdminHash}}"
+		const enableAutoClear = ("{{ .EnableAutoClear}}" === 'true')
 
 		const urlString = `${window.location.origin}/?room=${roomUUID}`
 		document.getElementById('urlString').innerHTML = urlString
@@ -120,7 +121,11 @@
 		}
 
 		window.onblur = () => { 
-			if(currentUser === "ADMIN" && source.readyState !== source.CLOSED){
+			if(
+				currentUser === "ADMIN" && 
+				source.readyState !== source.CLOSED &&
+				enableAutoClear
+			){
 				resetPoints()
 			}
 		}
