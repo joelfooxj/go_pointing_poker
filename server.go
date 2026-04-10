@@ -267,6 +267,16 @@ func mainPageHandler(w http.ResponseWriter, req *http.Request) {
 			http.StatusForbidden,
 			fmt.Sprintf("You must provide a username to join a room."),
 		)
+		return
+	}
+
+	if len(username) > 30 {
+		errorPageRedirectHandler(
+			w,
+			http.StatusForbidden,
+			fmt.Sprintf("Username must be 30 characters or fewer."),
+		)
+		return
 	}
 
 	if roomManager.userExists(username) {
@@ -461,6 +471,9 @@ func errorPageRedirectHandler(w http.ResponseWriter, status int, msg string) {
 
 func main() {
 	log.Print("Starting TB Pointing Poker")
+
+	// TODO: I want a way to create preset rooms that can be added
+	// dynamically to the roomMap without having to restart the server.
 
 	var err error
 	mainPage, err = template.ParseFS(files, "templates/main_page.tmpl.html")
